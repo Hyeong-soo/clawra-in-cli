@@ -540,7 +540,7 @@ def poll(timeout=0.03):
 
 # ─── Gemini chat (background thread) ─────────────────────
 
-import threading, subprocess as _sp, json as _json
+import threading, json as _json
 
 try:
     from google import genai
@@ -557,16 +557,6 @@ _MAX_CHAT = 20
 
 # API key: env var first, then 1Password
 _GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
-if not _GEMINI_KEY:
-    try:
-        _op_json = _sp.check_output(
-            ['op', 'item', 'get', 'nzije3o4ljbitg2uiil4njhjpm', '--format', 'json'],
-            text=True, timeout=10,
-        )
-        _op_data = _json.loads(_op_json)
-        _GEMINI_KEY = next(f['value'] for f in _op_data['fields'] if f.get('label') == 'api_key')
-    except Exception:
-        pass
 
 # Soul as system instruction
 _SOUL_PATH = os.path.join(_DIR, 'soul.md')
