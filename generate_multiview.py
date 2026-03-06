@@ -125,24 +125,12 @@ MIDPOINT_VIEWS = [
 
 
 def get_api_key():
-    """Get Gemini API key from 1Password."""
-    try:
-        result = subprocess.run(
-            ["op", "item", "get", "2rvmtgejubwvpe2xwi6vo6av2q",
-             "--fields", "label=credential", "--reveal"],
-            capture_output=True, text=True, timeout=10,
-        )
-        key = result.stdout.strip()
-        if key:
-            return key
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-
+    """Get Gemini API key from environment variable."""
     key = os.environ.get("GEMINI_API_KEY", "")
     if key:
         return key
 
-    print("Error: Could not get API key from 1Password or GEMINI_API_KEY env var")
+    print("Error: Set GEMINI_API_KEY environment variable")
     sys.exit(1)
 
 
