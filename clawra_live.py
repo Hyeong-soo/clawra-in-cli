@@ -5,7 +5,7 @@ Renders braille art that follows the mouse using pre-generated view images.
 Uses optical flow warping for smooth transitions between views.
 """
 
-import sys, os, time, random, signal, locale, math
+import sys, os, time, random, signal, locale, math, re, unicodedata
 import numpy as np
 import cv2
 locale.setlocale(locale.LC_ALL, '')
@@ -96,6 +96,45 @@ HIDE = f'{CSI}?25l'; SHOW = f'{CSI}?25h'; CLR = f'{CSI}2J'
 MOUSE_ON = f'{CSI}?1003h{CSI}?1006h'
 MOUSE_OFF = f'{CSI}?1003l{CSI}?1006l'
 
+_ANSI_RE = re.compile(r'\033\[[^m]*m')
+
+def _cw(c):
+    """Display width: CJK=2, others=1."""
+    return 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1
+
+def _vis_trunc(s, width):
+    """Truncate to `width` visible columns, preserving ANSI codes."""
+    vis = 0; i = 0
+    while i < len(s) and vis < width:
+        m = _ANSI_RE.match(s, i)
+        if m:
+            i = m.end()
+        else:
+            cw = _cw(s[i])
+            if vis + cw > width:
+                break
+            vis += cw; i += 1
+    return s[:i] + RST
+
+def _wrap(s, width):
+    """Wrap string into lines of at most `width` visible columns."""
+    # Split on newlines first, then wrap each segment
+    result = []
+    for paragraph in s.split('\n'):
+        cur = ''; vis = 0; i = 0
+        while i < len(paragraph):
+            m = _ANSI_RE.match(paragraph, i)
+            if m:
+                cur += m.group(); i = m.end()
+            else:
+                cw = _cw(paragraph[i])
+                if vis + cw > width:
+                    result.append(cur + RST)
+                    cur = ''; vis = 0
+                cur += paragraph[i]; vis += cw; i += 1
+        result.append(cur + RST)
+    return result or ['']
+
 # ─── Multi-view image loading ─────────────────────────────
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -154,6 +193,12 @@ for name in _VIEW_POS:
         _BV[name] = np.array(Image.open(path).convert('L'), dtype=np.float32)
 
 _HAS_BLINK = len(_BV) > 0
+
+# Load mouth-open view (center only)
+_MOUTH = None
+_mouth_path = os.path.join(_VIEWS_DIR, 'mouth_center.png')
+if os.path.exists(_mouth_path):
+    _MOUTH = np.array(Image.open(_mouth_path).convert('L'), dtype=np.float32)
 
 # ─── Optical flow precomputation ──────────────────────────
 
@@ -381,9 +426,14 @@ def _blink_blend(dx, dy):
     return top * (1.0 - fy) + bot * fy
 
 
-def draw_frame(dx=0.0, dy=0.0, blink_t=0.0):
-    """Generate a frame. blink_t=0 normal, blink_t=1 fully closed."""
-    result = blend_views(dx, dy)
+def draw_frame(dx=0.0, dy=0.0, blink_t=0.0, mouth_t=0.0):
+    """Generate a frame. blink_t=0..1 eye close, mouth_t=0..1 mouth open."""
+    if mouth_t > 0.0 and _MOUTH is not None:
+        # Speaking: blend toward center + mouth open
+        normal = blend_views(dx, dy)
+        result = normal * (1.0 - mouth_t) + _MOUTH * mouth_t
+    else:
+        result = blend_views(dx, dy)
     if blink_t > 0.0 and _HAS_BLINK:
         blink = _blink_blend(dx, dy)
         result = result * (1.0 - blink_t) + blink * blink_t
@@ -479,10 +529,139 @@ def poll(timeout=0.03):
                 while j < len(data) and not data[j].isalpha() and data[j] != '~': j += 1
                 i = j + 1
             elif data[i] == '\x03': events.append(('quit',)); i += 1
-            elif data[i] == '\x1b': events.append(('quit',)); i += 1
-            elif data[i] == ' ': events.append(('space',)); i += 1
+            elif data[i] == '\x1b': events.append(('esc',)); i += 1
+            elif data[i] == '\r' or data[i] == '\n':
+                events.append(('enter',)); i += 1
+            elif data[i] == '\x7f':
+                events.append(('backspace',)); i += 1
+            elif data[i] == ' ': events.append(('key', ' ')); i += 1
             else: events.append(('key', data[i])); i += 1
     return events
+
+# ─── Gemini chat (background thread) ─────────────────────
+
+import threading, subprocess as _sp, json as _json
+
+try:
+    from google import genai
+    from google.genai import types as _gtypes
+    _HAS_GENAI = True
+except ImportError:
+    _HAS_GENAI = False
+
+_chat_lock = threading.Lock()
+_chat_lines = []       # [(speaker, text), ...]
+_chat_speaking = False  # True during entire response cycle
+_chat_streaming = False # True only while tokens are arriving
+_MAX_CHAT = 20
+
+# API key: env var first, then 1Password
+_GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
+if not _GEMINI_KEY:
+    try:
+        _op_json = _sp.check_output(
+            ['op', 'item', 'get', 'nzije3o4ljbitg2uiil4njhjpm', '--format', 'json'],
+            text=True, timeout=10,
+        )
+        _op_data = _json.loads(_op_json)
+        _GEMINI_KEY = next(f['value'] for f in _op_data['fields'] if f.get('label') == 'api_key')
+    except Exception:
+        pass
+
+# Soul as system instruction
+_SOUL_PATH = os.path.join(_DIR, 'soul.md')
+_SOUL = ''
+if os.path.exists(_SOUL_PATH):
+    with open(_SOUL_PATH) as f:
+        _SOUL = f.read()
+
+# Gemini client
+_gemini_client = None
+if _HAS_GENAI and _GEMINI_KEY:
+    _gemini_client = genai.Client(api_key=_GEMINI_KEY)
+
+# Conversation history for Gemini (role: user/model)
+_chat_history = []
+
+# Persistent history
+_HISTORY_PATH = os.path.expanduser('~/.clawra_history.json')
+
+def _load_history():
+    global _chat_history, _chat_lines
+    if not os.path.exists(_HISTORY_PATH):
+        return
+    try:
+        with open(_HISTORY_PATH) as f:
+            data = _json.load(f)
+        _chat_history = [{"role": d["role"], "parts": [{"text": d["text"]}]} for d in data]
+        _chat_lines = [("you" if d["role"] == "user" else "clawra", d["text"]) for d in data]
+        if len(_chat_lines) > _MAX_CHAT:
+            _chat_lines = _chat_lines[-_MAX_CHAT:]
+    except Exception:
+        pass
+
+def _save_history():
+    try:
+        data = [{"role": h["role"], "text": h["parts"][0]["text"]} for h in _chat_history]
+        with open(_HISTORY_PATH, 'w') as f:
+            _json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+_load_history()
+
+def _send_to_gemini(text):
+    """Send message to Gemini with streaming, update chat in real time."""
+    global _chat_speaking, _chat_streaming
+    with _chat_lock:
+        _chat_lines.append(('you', text))
+        if len(_chat_lines) > _MAX_CHAT:
+            _chat_lines.pop(0)
+        _chat_speaking = True
+        _chat_lines.append(('clawra', '...'))
+    _chat_history.append({"role": "user", "parts": [{"text": text}]})
+
+    response_text = ''
+    try:
+        sys_instr = (_SOUL + '\n\n터미널 채팅창에서 대화 중이야. '
+                     '답변은 짧고 자연스럽게, 보통 1-3문장 정도로.') if _SOUL else None
+        config = _gtypes.GenerateContentConfig(
+            system_instruction=sys_instr,
+            max_output_tokens=2048,
+        )
+        stream = _gemini_client.models.generate_content_stream(
+            model='gemini-3-flash-preview',
+            contents=_chat_history,
+            config=config,
+        )
+        for chunk in stream:
+            if chunk.text:
+                if not _chat_streaming:
+                    with _chat_lock:
+                        _chat_streaming = True
+                # Drip-feed character by character for typing effect
+                for ch in chunk.text:
+                    response_text += ch
+                    with _chat_lock:
+                        _chat_lines[-1] = ('clawra', response_text)
+                    time.sleep(0.03)
+            # Check if generation was cut short
+            if hasattr(chunk, 'candidates') and chunk.candidates:
+                fr = getattr(chunk.candidates[0], 'finish_reason', None)
+                if fr and str(fr) not in ('STOP', 'FinishReason.STOP', 'None', '0'):
+                    response_text += f' [!{fr}]'
+                    with _chat_lock:
+                        _chat_lines[-1] = ('clawra', response_text)
+    except Exception as e:
+        response_text += f' (error: {e})'
+        with _chat_lock:
+            _chat_lines[-1] = ('clawra', response_text)
+
+    _chat_history.append({"role": "model", "parts": [{"text": response_text}]})
+    _save_history()
+    with _chat_lock:
+        _chat_streaming = False
+        _chat_speaking = False
 
 # ─── Main ─────────────────────────────────────────────────
 
@@ -495,6 +674,7 @@ def main():
         teardown(old)
 
 def loop():
+    global _chat_speaking
     tw, th = os.get_terminal_size()
     mx, my = tw//2, th//2
     head_x = 0.0; head_y = 0.0
@@ -502,21 +682,59 @@ def loop():
     # Blink state
     next_blink = time.time() + random.uniform(2.0, 5.0)
     blink_start = 0.0
-    blink_dur = 0.25  # seconds for full blink cycle
+    blink_dur = 0.25
     blink_t = 0.0
+
+    # Mouth state
+    mouth_t = 0.0
+    mouth_cycle = 0.5  # seconds per open/close cycle
+
+    # Chat input
+    input_buf = ''
+    chat_mode = False
+    has_gemini = _gemini_client is not None
 
     color = (210, 210, 220)
 
     while True:
         for ev in poll(0.04):
-            if ev[0] == 'quit' or (ev[0] == 'key' and ev[1] in 'qQ'): return
+            if ev[0] == 'quit':
+                return
+            elif ev[0] == 'esc':
+                if chat_mode:
+                    chat_mode = False
+                    input_buf = ''
+                else:
+                    return
+            elif ev[0] == 'key' and ev[1] in 'qQ' and not chat_mode:
+                return
             elif ev[0] == 'mouse':
                 mx, my = ev[1], ev[2]
                 if HAS_QUARTZ:
                     _calibrate(mx, my, tw, th)
+            elif ev[0] == 'enter':
+                if chat_mode and input_buf.strip() and not _chat_speaking:
+                    msg = input_buf.strip()
+                    input_buf = ''
+                    if has_gemini:
+                        threading.Thread(target=_send_to_gemini, args=(msg,), daemon=True).start()
+                    else:
+                        with _chat_lock:
+                            _chat_lines.append(('you', msg))
+                            _chat_lines.append(('clawra', '(gemini not configured)'))
+                elif not chat_mode:
+                    chat_mode = True
+            elif ev[0] == 'backspace':
+                if chat_mode and input_buf:
+                    input_buf = input_buf[:-1]
+            elif ev[0] == 'key':
+                if chat_mode:
+                    input_buf += ev[1]
 
         tw, th = os.get_terminal_size()
+        now = time.time()
 
+        # Mouse tracking
         if HAS_QUARTZ and _pane_x0 is not None:
             tgt_x, tgt_y = _global_mouse(tw, th)
         else:
@@ -525,28 +743,28 @@ def loop():
             tgt_y = (my - tcy) / (th / 2)
         tgt_x = max(-1.0, min(1.0, tgt_x))
         tgt_y = max(-1.0, min(1.0, tgt_y))
+
+        # When speaking, pull head toward center
+        if _chat_speaking:
+            tgt_x *= 0.3
+            tgt_y *= 0.3
         head_x += (tgt_x - head_x) * 0.18
         head_y += (tgt_y - head_y) * 0.18
 
-        # Fit to terminal: braille char = 2px wide, 4px tall
-        # Each braille char occupies 1 terminal column, 1 terminal row
-        # So max braille cols = tw, max braille rows = th - 4 (title+footer)
-        # Pixel width = braille_cols * 2, pixel height = braille_rows * 4
-        avail_h = th - 4
-        # Pick target_w that fits both width and height (keeping aspect 0.75)
-        tw_fit = tw * 2  # pixel width from terminal width
-        th_fit = int(avail_h * 4 / 0.75)  # pixel width that would fill height
+        # Fit to terminal (chat area = ~1/3 of terminal height)
+        chat_rows = max(8, th // 3)
+        avail_h = th - 4 - chat_rows
+        tw_fit = tw * 2
+        th_fit = int(avail_h * 4 / 0.75)
         target_w = min(tw_fit, th_fit)
         target_w = max(40, (target_w // 2) * 2)
 
         # Blink timing
-        now = time.time()
         if _HAS_BLINK and now >= next_blink and blink_start == 0.0:
             blink_start = now
         if blink_start > 0.0:
             elapsed = now - blink_start
             if elapsed < blink_dur:
-                # Triangle wave: 0→1→0 over blink_dur
                 half = blink_dur / 2
                 blink_t = elapsed / half if elapsed < half else (blink_dur - elapsed) / half
             else:
@@ -554,20 +772,25 @@ def loop():
                 blink_start = 0.0
                 next_blink = now + random.uniform(2.0, 5.0)
 
-        # Draw frame via flow-warped multi-view blending
-        frame = draw_frame(head_x, head_y, blink_t)
+        # Mouth animation (triangle wave while streaming only)
+        if _chat_streaming and _MOUTH is not None:
+            phase = (now % mouth_cycle) / mouth_cycle
+            mouth_t = phase * 2 if phase < 0.5 else (1.0 - phase) * 2
+        else:
+            mouth_t *= 0.7  # fade out
 
-        # Convert to braille
+        # Draw frame
+        frame = draw_frame(head_x, head_y, blink_t, mouth_t)
         lines, bw, bh = to_braille(frame, target_w)
 
         ox = max(0, (tw - bw) // 2)
-        oy = max(2, (th - bh) // 2)
+        oy = max(1, (th - bh - chat_rows) // 2)
 
         buf = [CLR]
 
         # Title
         title = f"{_fg(255,100,160)}{BOLD}  C L A W R A  {RST}"
-        buf.append(mv(max(0,(tw-17)//2), max(0, oy-2)) + title)
+        buf.append(mv(max(0,(tw-17)//2), max(0, oy-1)) + title)
 
         # Art
         fc = _fg(*color)
@@ -577,10 +800,44 @@ def loop():
                 buf.append(mv(ox, y) + fc + line)
         buf.append(RST)
 
-        # Footer
-        views_str = f"{len(_V)}v+{len(_BV)}b"
-        info = f"{_fg(120,180,235)}{DIM}q:quit  mouse:look  [{views_str}]{RST}"
-        buf.append(mv(max(0,(tw-40)//2), min(th-1, oy+bh+1)) + info)
+        # Chat area (bottom of terminal)
+        chat_y = th - chat_rows
+        buf.append(mv(0, chat_y) + f"{_fg(80,80,90)}{'─' * tw}{RST}")
+
+        with _chat_lock:
+            snapshot = list(_chat_lines)
+        # Wrap messages into display lines
+        cw = tw - 2
+        disp = []
+        for speaker, text in snapshot:
+            if speaker == 'clawra':
+                prefix = f"{_fg(255,100,160)}{BOLD}Clawra:{RST} "
+            else:
+                prefix = f"{_fg(120,180,235)}You:{RST} "
+            wrapped = _wrap(prefix + text, cw)
+            disp.extend(wrapped)
+        # Show last N lines that fit
+        max_lines = chat_rows - 2
+        vis_lines = disp[-max_lines:]
+        pad = ' ' * cw
+        for ci in range(max_lines):
+            y = chat_y + 1 + ci
+            if y >= th - 1:
+                break
+            if ci < len(vis_lines):
+                buf.append(mv(1, y) + vis_lines[ci])
+            else:
+                buf.append(mv(1, y) + pad)
+
+        # Input line
+        input_y = th - 1
+        if chat_mode:
+            prompt_str = f"{_fg(120,180,235)}> {RST}{input_buf}"
+            cursor = "█" if int(now * 3) % 2 == 0 else " "
+            buf.append(mv(0, input_y) + prompt_str + f"{_fg(120,180,235)}{cursor}{RST}")
+        else:
+            hint = "enter:chat  q:quit" + (f"  [gemini]" if has_gemini else f"  [{len(_V)}v+{len(_BV)}b]")
+            buf.append(mv(0, input_y) + f"{_fg(80,80,90)}{DIM}{hint}{RST}")
 
         sys.stdout.write(''.join(buf))
         sys.stdout.flush()

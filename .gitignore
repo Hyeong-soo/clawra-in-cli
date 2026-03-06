@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
 views/.flow_cache.npz
-views/view_center_new.png
 /tmp/
 *.tmp.png
