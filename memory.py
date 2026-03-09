@@ -60,7 +60,7 @@ class MemoryManager:
         # Character definition (in repo, public)
         self.soul_path = os.path.join(character_dir, 'soul.md')
 
-        # User data (in ~/.clawra/, private)
+        # User data (in <character_dir>/.memory/, private, gitignored)
         self.user_path = os.path.join(self.data_dir, 'user.md')
         self.memory_path = os.path.join(self.data_dir, 'memory.md')
         self.lessons_path = os.path.join(self.data_dir, 'lessons.md')
@@ -279,8 +279,8 @@ class MemoryManager:
             data = json.loads(text)
             with self._lock:
                 self._apply(data, today_str)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[memory] extraction error: {e}")
 
     def _apply(self, data, today_str):
         """Apply extracted data to memory files."""
@@ -472,8 +472,8 @@ class MemoryManager:
                 existing += f"\n\n## Compacted ({now_str})\n- {summary}"
                 with open(path, 'w') as f:
                     f.write(existing)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[memory] compaction error: {e}")
 
     # ── Session end ──────────────────────────────────────────
 

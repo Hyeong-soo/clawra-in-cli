@@ -15,7 +15,6 @@ Output files: view_<name>.png (800x1000, grayscale)
 
 import argparse
 import os
-import subprocess
 import sys
 import time
 
@@ -233,25 +232,10 @@ for name, desc in INNER_MIDPOINT_VIEWS:
 
 
 def get_api_key():
-    """Get Gemini API key from environment variable or 1Password."""
+    """Get Gemini API key from GEMINI_API_KEY environment variable."""
     key = os.environ.get("GEMINI_API_KEY", "")
     if key:
         return key
-
-    # Try loading from 1Password
-    try:
-        import json as _j
-        raw = subprocess.check_output(
-            ["op", "item", "get", "nzije3o4ljbitg2uiil4njhjpm", "--format", "json"],
-            text=True, stderr=subprocess.DEVNULL,
-        )
-        item = _j.loads(raw)
-        for f in item.get("fields", []):
-            if f.get("label") == "api_key" and f.get("value"):
-                os.environ["GEMINI_API_KEY"] = f["value"]
-                return f["value"]
-    except Exception:
-        pass
 
     print("Error: Set GEMINI_API_KEY environment variable")
     sys.exit(1)

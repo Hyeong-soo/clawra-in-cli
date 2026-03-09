@@ -662,7 +662,7 @@ _memory = MemoryManager(
 # Conversation history for Gemini (role: user/model)
 _chat_history = []
 
-# Persistent history — stored in ~/.clawra/<character>/ alongside memory files
+# Persistent history — stored in <character_dir>/.memory/ alongside memory files
 _HISTORY_PATH = _memory.history_path
 
 def _load_history():
@@ -675,7 +675,7 @@ def _load_history():
         _chat_history = [{"role": d["role"], "parts": [{"text": d["text"]}]} for d in data]
         if len(_chat_history) > 20:
             _chat_history = _chat_history[-20:]
-        _chat_lines = [("you" if d["role"] == "user" else "clawra", d["text"]) for d in data]
+        _chat_lines = [("you" if d["role"] == "user" else _CHARACTER_NAME, d["text"]) for d in data]
         if len(_chat_lines) > _MAX_CHAT:
             _chat_lines = _chat_lines[-_MAX_CHAT:]
     except Exception:
@@ -699,7 +699,7 @@ def _send_to_gemini(text):
         if len(_chat_lines) > _MAX_CHAT:
             _chat_lines.pop(0)
         _chat_speaking = True
-        _chat_lines.append(('clawra', '...'))
+        _chat_lines.append((_CHARACTER_NAME, '...'))
     _chat_history.append({"role": "user", "parts": [{"text": text}]})
 
     response_text = ''
@@ -723,7 +723,7 @@ def _send_to_gemini(text):
                 for ch in chunk.text:
                     response_text += ch
                     with _chat_lock:
-                        _chat_lines[-1] = ('clawra', response_text)
+                        _chat_lines[-1] = (_CHARACTER_NAME, response_text)
                     time.sleep(0.03)
             # Check if generation was cut short
             if hasattr(chunk, 'candidates') and chunk.candidates:
@@ -731,11 +731,11 @@ def _send_to_gemini(text):
                 if fr and str(fr) not in ('STOP', 'FinishReason.STOP', 'None', '0'):
                     response_text += f' [!{fr}]'
                     with _chat_lock:
-                        _chat_lines[-1] = ('clawra', response_text)
+                        _chat_lines[-1] = (_CHARACTER_NAME, response_text)
     except Exception as e:
         response_text += f' (error: {e})'
         with _chat_lock:
-            _chat_lines[-1] = ('clawra', response_text)
+            _chat_lines[-1] = (_CHARACTER_NAME, response_text)
 
     _chat_history.append({"role": "model", "parts": [{"text": response_text}]})
     # Keep history bounded — summarize dropped messages before discarding
@@ -823,7 +823,7 @@ def loop():
                     else:
                         with _chat_lock:
                             _chat_lines.append(('you', msg))
-                            _chat_lines.append(('clawra', '(gemini not configured)'))
+                            _chat_lines.append((_CHARACTER_NAME, '(gemini not configured)'))
                 elif not chat_mode:
                     chat_mode = True
             elif ev[0] == 'backspace':
@@ -923,8 +923,10 @@ def loop():
         buf = [CLR]
 
         # Title
-        title = f"{_fg(255,100,160)}{BOLD}  C L A W R A  {RST}"
-        buf.append(mv(max(0,(tw-17)//2), max(0, oy-1)) + title)
+        _title_text = ' '.join(_CHARACTER_NAME.upper())
+        _title_len = len(_title_text) + 4  # 2 spaces padding each side
+        title = f"{_fg(255,100,160)}{BOLD}  {_title_text}  {RST}"
+        buf.append(mv(max(0,(tw-_title_len)//2), max(0, oy-1)) + title)
 
         # Art
         fc = _fg(*color)
@@ -944,8 +946,8 @@ def loop():
         cw = tw - 2
         disp = []
         for speaker, text in snapshot:
-            if speaker == 'clawra':
-                prefix = f"{_fg(255,100,160)}{BOLD}Clawra:{RST} "
+            if speaker != 'you':
+                prefix = f"{_fg(255,100,160)}{BOLD}{_CHARACTER_NAME.capitalize()}:{RST} "
             else:
                 prefix = f"{_fg(120,180,235)}You:{RST} "
             wrapped = _wrap(prefix + text, cw)
