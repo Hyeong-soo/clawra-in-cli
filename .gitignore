@@ -1,5 +1,23 @@
 __pycache__/
 *.pyc
-views/.flow_cache.npz
 /tmp/
 *.tmp.png
+.DS_Store
+
+# Generated view PNGs (regenerate with setup_views.py, cached in views.npz)
+**/views/*.png
+
+# Optical flow cache (regenerated on startup)
+**/views/.flow_cache.npz
+
+# User data (personal memories, history, diary)
+**/.memory/
+
+# Custom characters (copied from preset on first use)
+characters/custom/
+
+# Misc
+clawra_base.png
+preview.html
+seed_memory.py
+test_npz_quality.py

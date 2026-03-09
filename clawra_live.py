@@ -75,13 +75,26 @@ def _calibrate(col, row, tw, th):
         _pane_y0 = new_y0
     _prev_cal = (col, row, px, py, now)
 
+# Gaze origin: character's glabella (between eyes) in normalized image coords
+_GAZE_ORIGIN_X = 0.5   # center horizontally
+_GAZE_ORIGIN_Y = 0.37  # ~37% from top (between eyebrows)
+
+# Updated per frame by main loop
+_gaze_screen_x = None  # pixel x of glabella on screen
+_gaze_screen_y = None  # pixel y of glabella on screen
+
 def _global_mouse(tw, th):
-    """Map Quartz global mouse to [-1,1] relative to calibrated pane."""
+    """Map Quartz global mouse to [-1,1] relative to character's glabella."""
     if _pane_x0 is None:
         return 0.0, 0.0
     px, py = _quartz_pos()
-    cx = _pane_x0 + tw * _char_w / 2
-    cy = _pane_y0 + th * _char_h / 2
+    # Use glabella as origin if available, else fall back to pane center
+    if _gaze_screen_x is not None:
+        cx = _gaze_screen_x
+        cy = _gaze_screen_y
+    else:
+        cx = _pane_x0 + tw * _char_w / 2
+        cy = _pane_y0 + th * _char_h / 2
     hw = tw * _char_w / 2
     hh = th * _char_h / 2
     dx = (px - cx) / hw if hw > 0 else 0.0
@@ -138,14 +151,52 @@ def _wrap(s, width):
 # ─── Multi-view image loading ─────────────────────────────
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
-_VIEWS_DIR = os.path.join(_DIR, 'views')
 
-def _load_view(name):
-    """Load a view image as numpy float32 array."""
-    path = os.path.join(_VIEWS_DIR, f'view_{name}.png')
-    if os.path.exists(path):
-        return np.array(Image.open(path).convert('L'), dtype=np.float32)
+# --character <name> to select a character (searches preset/ then custom/)
+# --views-dir <path> still works as direct override
+_CHARACTER_NAME = None
+_CHARACTER_DIR = None
+
+import shutil
+
+def _find_character_dir(name):
+    """Find character directory: custom/<name> first, then copy from preset/<name>.
+
+    Preset = read-only template (public on GitHub).
+    Custom = user's working copy (created on first use by copying preset).
+    """
+    custom = os.path.join(_DIR, 'characters', 'custom', name)
+    if os.path.isdir(custom):
+        return custom
+
+    preset = os.path.join(_DIR, 'characters', 'preset', name)
+    if os.path.isdir(preset):
+        print(f"First use of '{name}' — copying preset to custom...")
+        shutil.copytree(preset, custom)
+        return custom
+
     return None
+
+if '--character' in sys.argv:
+    _idx = sys.argv.index('--character')
+    if _idx + 1 < len(sys.argv):
+        _CHARACTER_NAME = sys.argv[_idx + 1]
+        _CHARACTER_DIR = _find_character_dir(_CHARACTER_NAME)
+        if not _CHARACTER_DIR:
+            print(f"Character '{_CHARACTER_NAME}' not found in characters/preset/ or characters/custom/")
+            sys.exit(1)
+
+if _CHARACTER_DIR:
+    _VIEWS_DIR = os.path.join(_CHARACTER_DIR, 'views')
+elif '--views-dir' in sys.argv:
+    _idx = sys.argv.index('--views-dir')
+    if _idx + 1 < len(sys.argv):
+        _VIEWS_DIR = os.path.abspath(sys.argv[_idx + 1])
+else:
+    # Default: use clawra (copy from preset if needed)
+    _CHARACTER_NAME = 'clawra'
+    _CHARACTER_DIR = _find_character_dir('clawra')
+    _VIEWS_DIR = os.path.join(_CHARACTER_DIR, 'views')
 
 # View positions in (dx, dy) space: dx=-1(left)..+1(right), dy=-1(up)..+1(down)
 _VIEW_POS = {
@@ -164,6 +215,15 @@ _VIEW_POS = {
     'down_mright': (0.5, 1.0),     # between down and right_down
     'down_mleft':  (-0.5, 1.0),    # between down and left_down
     'left_mdown':  (-1.0, 0.5),    # between left and left_down
+    # 8 inner-ring midpoints (between center and extremes)
+    'center_mleft':      (-0.5,  0.0),
+    'center_mright':     ( 0.5,  0.0),
+    'center_mup':        ( 0.0, -0.5),
+    'center_mdown':      ( 0.0,  0.5),
+    'center_mleft_up':   (-0.5, -0.5),
+    'center_mright_up':  ( 0.5, -0.5),
+    'center_mleft_down': (-0.5,  0.5),
+    'center_mright_down':( 0.5,  0.5),
 }
 
 # 3x3 grid for bilinear fallback (when < 17 views)
@@ -176,29 +236,43 @@ _GRID_NAMES = [
 # Set of 3x3 grid view names
 _GRID_POS_SET = {_GRID_NAMES[r][c] for r in range(3) for c in range(3)}
 
-# Load all available views
+# ─── View loading: views.npz (cache) or individual PNGs ──
+
+_NPZ_PATH = os.path.join(_VIEWS_DIR, 'views.npz')
 _V = {}
-for name in _VIEW_POS:
-    arr = _load_view(name)
-    if arr is not None:
-        _V[name] = arr
-
-assert 'center' in _V, f"Missing view_center.png in {_VIEWS_DIR}"
-
-# Load blink (eyes-closed) views for all 17 views
 _BV = {}
-for name in _VIEW_POS:
-    path = os.path.join(_VIEWS_DIR, f'blink_{name}.png')
-    if os.path.exists(path):
-        _BV[name] = np.array(Image.open(path).convert('L'), dtype=np.float32)
-
-_HAS_BLINK = len(_BV) > 0
-
-# Load mouth-open view (center only)
 _MOUTH = None
-_mouth_path = os.path.join(_VIEWS_DIR, 'mouth_center.png')
-if os.path.exists(_mouth_path):
-    _MOUTH = np.array(Image.open(_mouth_path).convert('L'), dtype=np.float32)
+
+if os.path.exists(_NPZ_PATH):
+    print("Loading views from views.npz...")
+    _npz = np.load(_NPZ_PATH)
+    for key in _npz.files:
+        arr = _npz[key].astype(np.float32)
+        if key.startswith('view_'):
+            _V[key[5:]] = arr
+        elif key.startswith('blink_'):
+            _BV[key[6:]] = arr
+        elif key == 'mouth_center':
+            _MOUTH = arr
+    _npz.close()
+    print(f"  {len(_V)} views, {len(_BV)} blinks, mouth={'yes' if _MOUTH is not None else 'no'}")
+else:
+    print("Loading views from PNGs...")
+    for name in _VIEW_POS:
+        path = os.path.join(_VIEWS_DIR, f'view_{name}.png')
+        if os.path.exists(path):
+            _V[name] = np.array(Image.open(path).convert('L'), dtype=np.float32)
+    for name in _VIEW_POS:
+        path = os.path.join(_VIEWS_DIR, f'blink_{name}.png')
+        if os.path.exists(path):
+            _BV[name] = np.array(Image.open(path).convert('L'), dtype=np.float32)
+    mouth_path = os.path.join(_VIEWS_DIR, 'mouth_center.png')
+    if os.path.exists(mouth_path):
+        _MOUTH = np.array(Image.open(mouth_path).convert('L'), dtype=np.float32)
+    print(f"  {len(_V)} views, {len(_BV)} blinks")
+
+assert 'center' in _V, f"Missing view_center in {_VIEWS_DIR}"
+_HAS_BLINK = len(_BV) > 0
 
 # ─── Optical flow precomputation ──────────────────────────
 
@@ -231,12 +305,17 @@ def _warp_with_flow(img, flow, t):
 _CACHE_PATH = os.path.join(_VIEWS_DIR, '.flow_cache.npz')
 
 def _view_fingerprint():
-    """Hash of view file mtimes to detect changes."""
+    """Hash of view data to detect changes."""
     import hashlib
     h = hashlib.md5()
-    for name in sorted(_V.keys()):
-        path = os.path.join(_VIEWS_DIR, f'view_{name}.png')
-        h.update(f"{name}:{os.path.getmtime(path):.6f}".encode())
+    # Use npz mtime if available, else individual PNGs
+    if os.path.exists(_NPZ_PATH):
+        h.update(f"npz:{os.path.getmtime(_NPZ_PATH):.6f}".encode())
+    else:
+        for name in sorted(_V.keys()):
+            path = os.path.join(_VIEWS_DIR, f'view_{name}.png')
+            if os.path.exists(path):
+                h.update(f"{name}:{os.path.getmtime(path):.6f}".encode())
     return h.hexdigest()
 
 def _load_cache():
@@ -285,10 +364,16 @@ for r in range(3):
             if nb in _V:
                 _GRID_EDGES.append((name, nb))
 
-_INNER_SYNTH = {
-    (1, 1): 'left_up',    (1, 2): 'up',       (1, 3): 'right_up',
-    (2, 1): 'left',                            (2, 3): 'right',
-    (3, 1): 'left_down',  (3, 2): 'down',      (3, 3): 'right_down',
+# Fallback: synthesize inner views via optical flow if real images don't exist
+_INNER_SYNTH_MAP = {
+    'center_mleft_up':   'left_up',
+    'center_mup':        'up',
+    'center_mright_up':  'right_up',
+    'center_mleft':      'left',
+    'center_mright':     'right',
+    'center_mleft_down': 'left_down',
+    'center_mdown':      'down',
+    'center_mright_down':'right_down',
 }
 
 _cached = _load_cache()
@@ -303,42 +388,40 @@ else:
         _FLOWS[(b, a)] = _compute_flow(_V[b], _V[a])
     print(f"  {len(_FLOWS)} flow fields computed")
 
-    print("Synthesizing inner views...")
+    print("Synthesizing inner views (fallback for missing)...")
     _SYNTH = {}
-    for (sr, sc), extreme in _INNER_SYNTH.items():
-        if extreme in _V and ('center', extreme) in _FLOWS:
-            _SYNTH[(sr, sc)] = _warp_with_flow(
+    for inner_name, extreme in _INNER_SYNTH_MAP.items():
+        if inner_name not in _V and extreme in _V and ('center', extreme) in _FLOWS:
+            _SYNTH[inner_name] = _warp_with_flow(
                 _V['center'], _FLOWS[('center', extreme)], 0.5
             )
     print(f"  {len(_SYNTH)} inner views synthesized")
     _save_cache(_FLOWS, _SYNTH)
     print("  Saved to cache")
 
-# 5x5 grid layout
+# 5x5 grid layout — all named views
 _GRID5 = [
-    ['left_up',    'up_mleft',    'up',     'up_mright',    'right_up'],
-    ['left_mup',   (1,1),         (1,2),    (1,3),          'right_mup'],
-    ['left',       (2,1),         'center', (2,3),          'right'],
-    ['left_mdown', (3,1),         (3,2),    (3,3),          'right_mdown'],
-    ['left_down',  'down_mleft',  'down',   'down_mright',  'right_down'],
+    ['left_up',    'up_mleft',          'up',          'up_mright',          'right_up'],
+    ['left_mup',   'center_mleft_up',   'center_mup',  'center_mright_up',  'right_mup'],
+    ['left',       'center_mleft',      'center',      'center_mright',     'right'],
+    ['left_mdown', 'center_mleft_down', 'center_mdown','center_mright_down','right_mdown'],
+    ['left_down',  'down_mleft',        'down',        'down_mright',       'right_down'],
 ]
 
 
 def _get5(row, col):
     """Get view for 5x5 grid position."""
-    entry = _GRID5[row][col]
-    if isinstance(entry, str):
-        if entry in _V:
-            return _V[entry]
-        return _V['center']
-    # Tuple = synthesized inner view
-    if entry in _SYNTH:
-        return _SYNTH[entry]
+    name = _GRID5[row][col]
+    if name in _V:
+        return _V[name]
+    # Fallback to synthesized inner view
+    if name in _SYNTH:
+        return _SYNTH[name]
     return _V['center']
 
 
-_DEAD_ZONE = 0.4   # show pure center within this radius
-_BLEND_ZONE = 0.15  # crossfade from center to grid over this width
+_DEAD_ZONE = 0.12   # show pure center within this radius
+_BLEND_ZONE = 0.08  # crossfade from center to grid over this width
 
 
 def _grid_blend(dx, dy):
@@ -389,11 +472,14 @@ def blend_views(dx, dy):
 
 def _bget5(row, col):
     """Get blink view for 5x5 grid position, falling back to normal view."""
-    entry = _GRID5[row][col]
-    if isinstance(entry, str):
-        return _BV.get(entry, _V.get(entry, _V['center']))
-    # Tuple = synthesized inner — use normal synth as fallback
-    return _SYNTH.get(entry, _V['center'])
+    name = _GRID5[row][col]
+    if name in _BV:
+        return _BV[name]
+    if name in _V:
+        return _V[name]
+    if name in _SYNTH:
+        return _SYNTH[name]
+    return _V['center']
 
 
 def _blink_blend(dx, dy):
@@ -558,23 +644,26 @@ _MAX_CHAT = 20
 # API key: env var first, then 1Password
 _GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
 
-# Soul as system instruction
-_SOUL_PATH = os.path.join(_DIR, 'soul.md')
-_SOUL = ''
-if os.path.exists(_SOUL_PATH):
-    with open(_SOUL_PATH) as f:
-        _SOUL = f.read()
-
 # Gemini client
 _gemini_client = None
 if _HAS_GENAI and _GEMINI_KEY:
     _gemini_client = genai.Client(api_key=_GEMINI_KEY)
 
+# Memory manager (tiered memory system)
+from memory import MemoryManager
+
+_char_dir_for_memory = _CHARACTER_DIR or os.path.join(_DIR, 'characters', 'preset', 'clawra')
+_memory = MemoryManager(
+    _char_dir_for_memory,
+    gemini_client=_gemini_client,
+    character_name=_CHARACTER_NAME or 'clawra',
+)
+
 # Conversation history for Gemini (role: user/model)
 _chat_history = []
 
-# Persistent history
-_HISTORY_PATH = os.path.expanduser('~/.clawra_history.json')
+# Persistent history — stored in ~/.clawra/<character>/ alongside memory files
+_HISTORY_PATH = _memory.history_path
 
 def _load_history():
     global _chat_history, _chat_lines
@@ -584,6 +673,8 @@ def _load_history():
         with open(_HISTORY_PATH) as f:
             data = _json.load(f)
         _chat_history = [{"role": d["role"], "parts": [{"text": d["text"]}]} for d in data]
+        if len(_chat_history) > 20:
+            _chat_history = _chat_history[-20:]
         _chat_lines = [("you" if d["role"] == "user" else "clawra", d["text"]) for d in data]
         if len(_chat_lines) > _MAX_CHAT:
             _chat_lines = _chat_lines[-_MAX_CHAT:]
@@ -613,8 +704,7 @@ def _send_to_gemini(text):
 
     response_text = ''
     try:
-        sys_instr = (_SOUL + '\n\n터미널 채팅창에서 대화 중이야. '
-                     '답변은 짧고 자연스럽게, 보통 1-3문장 정도로.') if _SOUL else None
+        sys_instr = _memory.build_system_prompt()
         config = _gtypes.GenerateContentConfig(
             system_instruction=sys_instr,
             max_output_tokens=2048,
@@ -648,7 +738,20 @@ def _send_to_gemini(text):
             _chat_lines[-1] = ('clawra', response_text)
 
     _chat_history.append({"role": "model", "parts": [{"text": response_text}]})
+    # Keep history bounded — summarize dropped messages before discarding
+    _MAX_HISTORY = 20  # 10 turns (user + model pairs)
+    if len(_chat_history) > _MAX_HISTORY:
+        dropped = _chat_history[:-_MAX_HISTORY]
+        _chat_history[:] = _chat_history[-_MAX_HISTORY:]
+        # Background: summarize compacted messages into diary
+        threading.Thread(
+            target=_memory.on_history_compact,
+            args=(dropped,),
+            daemon=True,
+        ).start()
     _save_history()
+    # Background: extract facts/memories from conversation
+    _memory.on_turn_complete(_chat_history)
     with _chat_lock:
         _chat_streaming = False
         _chat_speaking = False
@@ -661,6 +764,9 @@ def main():
     try:
         loop()
     finally:
+        # Final memory extraction before exit (synchronous)
+        if _memory and _chat_history:
+            _memory.on_session_end(_chat_history)
         teardown(old)
 
 def loop():
@@ -668,6 +774,12 @@ def loop():
     tw, th = os.get_terminal_size()
     mx, my = tw//2, th//2
     head_x = 0.0; head_y = 0.0
+
+    # Snap-to-nearest-view when mouse is idle
+    _last_tgt = (0.0, 0.0)
+    _idle_since = time.time()
+    _IDLE_THRESH = 0.3    # seconds before snapping
+    _SNAP_SPEED = 0.12    # easing speed toward snap target
 
     # Blink state
     next_blink = time.time() + random.uniform(2.0, 5.0)
@@ -728,18 +840,44 @@ def loop():
         if HAS_QUARTZ and _pane_x0 is not None:
             tgt_x, tgt_y = _global_mouse(tw, th)
         else:
-            tcx, tcy = tw / 2, th / 2
-            tgt_x = (mx - tcx) / (tw / 2)
-            tgt_y = (my - tcy) / (th / 2)
+            # Use glabella position in terminal char coords as origin
+            try:
+                gcx = ox + bw * _GAZE_ORIGIN_X
+                gcy = oy + bh * _GAZE_ORIGIN_Y
+            except NameError:
+                gcx, gcy = tw / 2, th / 2
+            tgt_x = (mx - gcx) / (tw / 2)
+            tgt_y = (my - gcy) / (th / 2)
         tgt_x = max(-1.0, min(1.0, tgt_x))
         tgt_y = max(-1.0, min(1.0, tgt_y))
 
-        # When speaking, pull head toward center
+        # When speaking, lock head to center (no mouse tracking)
         if _chat_speaking:
-            tgt_x *= 0.3
-            tgt_y *= 0.3
-        head_x += (tgt_x - head_x) * 0.18
-        head_y += (tgt_y - head_y) * 0.18
+            tgt_x = 0.0
+            tgt_y = 0.0
+
+        # Detect mouse idle → snap to nearest view
+        if abs(tgt_x - _last_tgt[0]) > 0.02 or abs(tgt_y - _last_tgt[1]) > 0.02:
+            _idle_since = now
+            _last_tgt = (tgt_x, tgt_y)
+
+        if now - _idle_since > _IDLE_THRESH:
+            # Find nearest 5x5 grid view position
+            best_name = 'center'
+            best_dist = tgt_x ** 2 + tgt_y ** 2
+            for vname, (vx, vy) in _VIEW_POS.items():
+                if vname not in _V and vname not in _SYNTH:
+                    continue
+                d = (tgt_x - vx) ** 2 + (tgt_y - vy) ** 2
+                if d < best_dist:
+                    best_dist = d
+                    best_name = vname
+            snap_x, snap_y = _VIEW_POS[best_name]
+            head_x += (snap_x - head_x) * _SNAP_SPEED
+            head_y += (snap_y - head_y) * _SNAP_SPEED
+        else:
+            head_x += (tgt_x - head_x) * 0.18
+            head_y += (tgt_y - head_y) * 0.18
 
         # Fit to terminal (chat area = ~1/3 of terminal height)
         chat_rows = max(8, th // 3)
@@ -775,6 +913,12 @@ def loop():
 
         ox = max(0, (tw - bw) // 2)
         oy = max(1, (th - bh - chat_rows) // 2)
+
+        # Update gaze origin to character's glabella position on screen
+        if _pane_x0 is not None:
+            global _gaze_screen_x, _gaze_screen_y
+            _gaze_screen_x = _pane_x0 + (ox + bw * _GAZE_ORIGIN_X) * _char_w
+            _gaze_screen_y = _pane_y0 + (oy + bh * _GAZE_ORIGIN_Y) * _char_h
 
         buf = [CLR]
 
