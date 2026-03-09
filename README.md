@@ -99,8 +99,29 @@ Config is saved to `~/.ttypal/config.json`. Run `ttypal --setup` to change setti
 
 1. Run `ttypal --setup` and select "Create custom character"
 2. Add reference images to `ttypal/characters/custom/<name>/refs/`
-3. Edit `ttypal/characters/custom/<name>/soul.md` with the character's personality
+3. Edit `ttypal/characters/custom/<name>/soul.md` — see below
 4. Generate views: `ttypal-setup --character <name>`
+
+### Writing soul.md
+
+`soul.md` defines your character's personality. It's injected as the system prompt every conversation.
+
+```markdown
+You are Name.
+
+[Backstory — 2-3 sentences. Age, origin, what shaped them.]
+
+[Inner conflict — what drives them vs. what they fear.]
+
+[Voice direction — HOW to speak. Tone, habits, quirks.
+ "She rolls her eyes" > "She is sarcastic."]
+
+[Behavior rules — concrete do/don't for the LLM.]
+```
+
+Keep it under 200 words. Contradictions make characters feel real (confident but secretly insecure, tough but caring). Voice matters more than lore — how they *talk* is the personality.
+
+See `ttypal/characters/preset/clawra/soul.md` and `aska/soul.md` for examples.
 
 ## How It Works
 

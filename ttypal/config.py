@@ -186,10 +186,32 @@ def _setup_custom(cfg):
     os.makedirs(os.path.join(custom_dir, 'views'), exist_ok=True)
     os.makedirs(os.path.join(custom_dir, 'refs'), exist_ok=True)
 
-    # Create default soul.md
+    # Create soul.md with writing guide
     soul_path = os.path.join(custom_dir, 'soul.md')
     with open(soul_path, 'w') as f:
-        f.write(f"You are {name.capitalize()}.\n")
+        f.write(f"""\
+You are {name.capitalize()}.
+
+<!-- soul.md guide — delete these comments when you're done.
+
+This file defines your character's personality. It's injected as the
+system prompt every conversation, so keep it concise and vivid.
+
+Structure (recommended):
+  1. Identity line      "You are Name."
+  2. Backstory          2-3 sentences. Age, origin, what shaped them.
+  3. Inner conflict     What drives them vs. what they fear.
+  4. Voice direction    HOW to speak — tone, habits, quirks.
+  5. Behavior rules     Concrete do/don't instructions for the LLM.
+
+Tips:
+  - Show, don't tell. "She rolls her eyes" > "She is sarcastic."
+  - Give contradictions. Confident but secretly insecure. Tough but caring.
+  - Voice > lore. How they *talk* matters more than their full biography.
+  - Keep it under 200 words. Long soul.md = diluted personality.
+
+See preset characters (clawra/soul.md, aska/soul.md) for examples. -->
+""")
 
     cfg['character'] = name
 
