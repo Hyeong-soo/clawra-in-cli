@@ -263,6 +263,36 @@ def api_upload_refs():
     return jsonify({"refs": [os.path.basename(p) for p in ref_image_paths]})
 
 
+@app.route("/api/finish", methods=["POST"])
+def api_finish():
+    """Save gaze origin, pack NPZ, and shut down server."""
+    # Save gaze origin
+    data = request.get_json(silent=True) or {}
+    gaze_x = data.get('gaze_x', 0.5)
+    gaze_y = data.get('gaze_y', 0.37)
+    char_dir = os.path.dirname(output_dir)  # output_dir is <char>/views
+    gaze_path = os.path.join(char_dir, 'gaze.json')
+    import json as _j
+    with open(gaze_path, 'w') as f:
+        _j.dump({'gaze_x': round(gaze_x, 4), 'gaze_y': round(gaze_y, 4)}, f)
+
+    _pack_npz()
+
+    # Schedule shutdown after response is sent
+    import signal
+    def _shutdown():
+        os.kill(os.getpid(), signal.SIGINT)
+    threading.Timer(0.5, _shutdown).start()
+
+    npz_path = os.path.join(output_dir, 'views.npz')
+    msg = f"✓ Gaze origin saved ({gaze_x:.0%}, {gaze_y:.0%})"
+    if os.path.exists(npz_path):
+        size_mb = os.path.getsize(npz_path) / (1024 * 1024)
+        msg += f" · views.npz ({size_mb:.1f} MB)"
+    msg += " · Server stopped. You can close this tab."
+    return jsonify({"message": msg})
+
+
 @app.route("/views/<path:filename>")
 def serve_view(filename):
     return send_from_directory(output_dir, filename)
@@ -292,6 +322,8 @@ h1 { text-align: center; margin-bottom: 8px; font-size: 24px; color: #fff; }
 .btn-generate-all { background: #4361ee; color: #fff; }
 .btn-generate-all:hover { background: #3a56d4; }
 .btn-generate-all:disabled { background: #555; cursor: not-allowed; }
+.btn-finish { background: #2d6a4f; color: #fff; }
+.btn-finish:hover { background: #245a42; }
 
 .refs-area { text-align: center; margin-bottom: 20px; }
 .refs-area label { display: inline-block; padding: 8px 20px; background: #2d2d44; border: 2px dashed #555; border-radius: 8px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
@@ -347,6 +379,7 @@ h1 { text-align: center; margin-bottom: 8px; font-size: 24px; color: #fff; }
 
 <div class="top-bar">
   <button class="btn-generate-all" id="btn-gen-all" onclick="generateAll()">Generate All Missing</button>
+  <button class="btn-finish" onclick="finish()">Finish &amp; Pack NPZ</button>
 </div>
 
 <div class="grid" id="grid"></div>
@@ -523,6 +556,52 @@ function updateExtras(data) {
   }
 }
 
+async function finish() {
+  // Show gaze origin picker overlay
+  const centerImg = `/views/view_center.png?t=${Date.now()}`;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;';
+  overlay.innerHTML = `
+    <p style="color:#ccc;font-size:18px;margin-bottom:12px">Click between the character's eyes (glabella)</p>
+    <div style="position:relative;display:inline-block;cursor:crosshair" id="gaze-wrap">
+      <img src="${centerImg}" style="max-height:80vh;border:1px solid #444" id="gaze-img">
+      <div id="gaze-marker" style="display:none;position:absolute;width:12px;height:12px;border-radius:50%;border:2px solid #f44;background:rgba(255,68,68,0.4);transform:translate(-50%,-50%);pointer-events:none"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:12px">
+      <button id="gaze-confirm" style="padding:10px 24px;background:#2d6a4f;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;display:none">Confirm & Finish</button>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:10px 24px;background:#555;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">Cancel</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  let gazeX = 0.5, gazeY = 0.37;
+  const img = document.getElementById('gaze-img');
+  const marker = document.getElementById('gaze-marker');
+  const confirmBtn = document.getElementById('gaze-confirm');
+
+  img.addEventListener('click', (e) => {
+    const rect = img.getBoundingClientRect();
+    gazeX = (e.clientX - rect.left) / rect.width;
+    gazeY = (e.clientY - rect.top) / rect.height;
+    marker.style.left = (gazeX * 100) + '%';
+    marker.style.top = (gazeY * 100) + '%';
+    marker.style.display = 'block';
+    confirmBtn.style.display = 'inline-block';
+  });
+
+  confirmBtn.addEventListener('click', async () => {
+    overlay.innerHTML = '<p style="color:#6abf7b;font-size:20px">Packing NPZ and shutting down...</p>';
+    try {
+      const res = await fetch('/api/finish', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({gaze_x: gazeX, gaze_y: gazeY})
+      });
+      const data = await res.json();
+      document.body.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;height:100vh;color:#6abf7b;font-size:24px;font-family:monospace">${data.message}</div>`;
+    } catch(e) {}
+  });
+}
+
 // Init
 buildGrid();
 buildExtras();
@@ -649,7 +728,49 @@ def main():
     print(f"  Server: {url}")
     print(f"  Press Ctrl+C to stop\n")
 
-    app.run(host="127.0.0.1", port=args.port, debug=False)
+    try:
+        app.run(host="127.0.0.1", port=args.port, debug=False)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _pack_npz()
+
+
+_npz_packed = False
+
+def _pack_npz():
+    """Pack all generated PNGs into views.npz for fast loading."""
+    global _npz_packed
+    if _npz_packed:
+        return
+    _npz_packed = True
+
+    from PIL import Image as _PILImage
+    import numpy as _np
+
+    arrays = {}
+    count = 0
+    for name in ALL_VIEW_NAMES:
+        for prefix in ('view_', 'blink_'):
+            path = os.path.join(output_dir, f'{prefix}{name}.png')
+            if os.path.exists(path):
+                arrays[f'{prefix}{name}'] = _np.array(
+                    _PILImage.open(path).convert('L'), dtype=_np.uint8)
+                count += 1
+    mouth_path = os.path.join(output_dir, 'mouth_center.png')
+    if os.path.exists(mouth_path):
+        arrays['mouth_center'] = _np.array(
+            _PILImage.open(mouth_path).convert('L'), dtype=_np.uint8)
+        count += 1
+
+    if not arrays:
+        print("\n  No views to pack.")
+        return
+
+    npz_path = os.path.join(output_dir, 'views.npz')
+    _np.savez_compressed(npz_path, **arrays)
+    size_mb = os.path.getsize(npz_path) / (1024 * 1024)
+    print(f"\n  \033[32m✓\033[0m Packed {count} images → views.npz ({size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":

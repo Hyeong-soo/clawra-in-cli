@@ -76,6 +76,7 @@ def _calibrate(col, row, tw, th):
     _prev_cal = (col, row, px, py, now)
 
 # Gaze origin: character's glabella (between eyes) in normalized image coords
+# Defaults, overridden by <character_dir>/gaze.json if present
 _GAZE_ORIGIN_X = 0.5   # center horizontally
 _GAZE_ORIGIN_Y = 0.37  # ~37% from top (between eyebrows)
 
@@ -213,6 +214,16 @@ else:
         _CHARACTER_NAME = 'clawra'
         _CHARACTER_DIR = _find_character_dir('clawra')
     _VIEWS_DIR = os.path.join(_CHARACTER_DIR, 'views')
+
+# Load per-character gaze origin
+_gaze_json = os.path.join(_CHARACTER_DIR, 'gaze.json')
+if os.path.exists(_gaze_json):
+    import json as _json_gaze
+    with open(_gaze_json) as _f:
+        _gd = _json_gaze.load(_f)
+        _GAZE_ORIGIN_X = _gd.get('gaze_x', _GAZE_ORIGIN_X)
+        _GAZE_ORIGIN_Y = _gd.get('gaze_y', _GAZE_ORIGIN_Y)
+    del _json_gaze, _f, _gd
 
 # View positions in (dx, dy) space: dx=-1(left)..+1(right), dy=-1(up)..+1(down)
 _VIEW_POS = {
@@ -436,8 +447,8 @@ def _get5(row, col):
     return _V['center']
 
 
-_DEAD_ZONE = 0.12   # show pure center within this radius
-_BLEND_ZONE = 0.08  # crossfade from center to grid over this width
+_DEAD_ZONE = 0.04   # show pure center within this radius
+_BLEND_ZONE = 0.06  # crossfade from center to grid over this width
 
 
 def _grid_blend(dx, dy):

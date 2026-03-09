@@ -186,40 +186,149 @@ def _setup_custom(cfg):
     os.makedirs(os.path.join(custom_dir, 'views'), exist_ok=True)
     os.makedirs(os.path.join(custom_dir, 'refs'), exist_ok=True)
 
-    # Create soul.md with writing guide
+    # Build soul.md
     soul_path = os.path.join(custom_dir, 'soul.md')
+    cap_name = name.capitalize()
+
+    print()
+    print(f"  \033[1mDefine {cap_name}'s personality\033[0m")
+    print(f"  \033[2mThis becomes soul.md — the character's system prompt.\033[0m")
+    print()
+
+    api_key = get_api_key(cfg)
+    soul_text = None
+
+    # Option A: Auto-generate from existing character
+    if api_key:
+        based_on = input("  Based on an existing character/person? (name or enter to skip):\n  ").strip()
+        if based_on:
+            soul_text = _generate_soul(api_key, cap_name, based_on)
+
+    # Option B: Manual input
+    if soul_text is None:
+        soul_text = _build_soul_manual(cap_name)
+
     with open(soul_path, 'w') as f:
-        f.write(f"""\
-You are {name.capitalize()}.
-
-<!-- soul.md guide — delete these comments when you're done.
-
-This file defines your character's personality. It's injected as the
-system prompt every conversation, so keep it concise and vivid.
-
-Structure (recommended):
-  1. Identity line      "You are Name."
-  2. Backstory          2-3 sentences. Age, origin, what shaped them.
-  3. Inner conflict     What drives them vs. what they fear.
-  4. Voice direction    HOW to speak — tone, habits, quirks.
-  5. Behavior rules     Concrete do/don't instructions for the LLM.
-
-Tips:
-  - Show, don't tell. "She rolls her eyes" > "She is sarcastic."
-  - Give contradictions. Confident but secretly insecure. Tough but caring.
-  - Voice > lore. How they *talk* matters more than their full biography.
-  - Keep it under 200 words. Long soul.md = diluted personality.
-
-See preset characters (clawra/soul.md, aska/soul.md) for examples. -->
-""")
+        f.write(soul_text)
 
     cfg['character'] = name
 
     print()
     print(f"  \033[32m✓\033[0m Created characters/custom/{name}/")
+    print(f"  \033[32m✓\033[0m soul.md written — edit anytime at:")
+    print(f"      {os.path.relpath(soul_path)}")
+    # Offer to launch view generation UI
+    refs_dir = os.path.join(custom_dir, 'refs')
+    refs_exist = any(f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
+                     for f in os.listdir(refs_dir)) if os.path.isdir(refs_dir) else False
+
+    if refs_exist:
+        print()
+        launch = input("  Reference images found. Launch view generator? (Y/n): ").strip().lower()
+        if launch != 'n':
+            _launch_view_setup(name)
+    else:
+        print()
+        print(f"  \033[1mNext:\033[0m Add reference images to characters/custom/{name}/refs/")
+        print(f"  Then run: \033[1mttypal-setup --character {name}\033[0m")
+        print(f"  \033[2mOpens a browser UI to generate & review views.\033[0m")
+
+
+def _launch_view_setup(character_name):
+    """Launch ttypal-setup browser UI for a character."""
+    from .setup_views import main as setup_main
     print()
-    print("  \033[1mNext steps:\033[0m")
-    print(f"  1. Add reference images to characters/custom/{name}/refs/")
-    print(f"  2. Edit characters/custom/{name}/soul.md with personality")
-    print(f"  3. Run: python setup_views.py --character {name}")
-    print(f"     to generate view images")
+    print(f"  \033[2mLaunching view generator for {character_name}...\033[0m")
+    sys.argv = ['ttypal-setup', '--character', character_name]
+    setup_main()
+
+
+def _build_soul_manual(cap_name):
+    """Build soul.md from interactive prompts."""
+    print(f"  \033[2mPress enter to skip any step.\033[0m")
+    print()
+
+    backstory = input("  Backstory (who are they, age, origin):\n  ").strip()
+    print()
+    conflict = input("  Inner conflict (what drives them vs. what they fear):\n  ").strip()
+    print()
+    voice = input("  Voice (how do they talk — tone, habits, quirks):\n  ").strip()
+    print()
+    rules = input("  Behavior rules (do/don't for the AI):\n  ").strip()
+
+    parts = [f"You are {cap_name}.\n"]
+    if backstory:
+        parts.append(backstory + '\n')
+    if conflict:
+        parts.append(conflict + '\n')
+    if voice:
+        parts.append(voice + '\n')
+    if rules:
+        parts.append(rules + '\n')
+
+    return '\n'.join(parts)
+
+
+def _generate_soul(api_key, char_name, based_on):
+    """Generate soul.md via Gemini based on an existing character/person.
+
+    Returns generated text, or None if generation fails (falls back to manual).
+    """
+    try:
+        from google import genai
+    except ImportError:
+        print("  \033[31mgoogle-genai not installed. pip install ttypal[chat]\033[0m")
+        print()
+        return None
+
+    prompt = f"""\
+Write a soul.md personality file for a chatbot character named "{char_name}", \
+based on "{based_on}".
+
+Follow this structure exactly:
+1. First line: "You are {char_name}."
+2. Backstory paragraph (2-3 sentences — age, origin, what shaped them. \
+Adapt from the source material but make it feel personal, not encyclopedic.)
+3. Inner conflict paragraph (what drives them vs. what scares them)
+4. Voice direction paragraph (HOW they talk — tone, habits, verbal quirks. \
+"Show don't tell": describe behaviors, not adjectives.)
+5. Behavior rules paragraph (concrete do/don't instructions for the AI)
+
+Rules:
+- Write in THIRD PERSON ("She is...", "She speaks..."), not first or second person
+- Under 200 words total
+- No markdown headers, no bullet points — just plain paragraphs
+- Capture the essence, not a biography
+- Give contradictions (confident but insecure, tough but caring)
+- Voice matters more than lore"""
+
+    print(f"  \033[2mGenerating from \"{based_on}\"...\033[0m")
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-3-flash-preview',
+            contents=prompt,
+        )
+        text = response.text.strip()
+    except Exception as e:
+        print(f"  \033[31mGeneration failed: {e}\033[0m")
+        print()
+        return None
+
+    # Preview
+    print()
+    print("  \033[2m┌─── soul.md preview ───\033[0m")
+    for line in text.split('\n'):
+        print(f"  \033[2m│\033[0m {line}")
+    print("  \033[2m└───────────────────────\033[0m")
+    print()
+
+    confirm = input("  Use this? (Y/n/retry): ").strip().lower()
+    if confirm == 'n':
+        print()
+        return None  # fall back to manual
+    if confirm == 'retry':
+        return _generate_soul(api_key, char_name, based_on)
+
+    return text + '\n'

@@ -10,7 +10,7 @@ Two-phase generation:
   Phase 2 (8 more → 17): Generate midpoints using TWO reference images
     e.g. slight_left = midpoint between center and left
 
-Output files: view_<name>.png (800x1000, grayscale)
+Output files: view_<name>.png (750x1000, grayscale)
 """
 
 import argparse
@@ -241,28 +241,22 @@ def get_api_key():
     sys.exit(1)
 
 
-def _save_result(response, output_path, target_w=800, target_h=1000):
-    """Extract image from Gemini response, center-crop to target size."""
+def _save_result(response, output_path, target_w=750, target_h=1000):
+    """Extract image from Gemini response, resize to target size."""
     for part in response.parts:
         if part.inline_data is not None:
             tmp_path = output_path + ".tmp.png"
             part.as_image().save(tmp_path)
             src = Image.open(tmp_path).convert("L")
-            # Scale to cover target, then center-crop
-            sw, sh = src.size
-            scale = max(target_w / sw, target_h / sh)
-            new_w, new_h = int(sw * scale), int(sh * scale)
-            resized = src.resize((new_w, new_h), Image.LANCZOS)
-            left = (new_w - target_w) // 2
-            top = (new_h - target_h) // 2
-            cropped = resized.crop((left, top, left + target_w, top + target_h))
-            cropped.save(output_path)
+            if src.size != (target_w, target_h):
+                src = src.resize((target_w, target_h), Image.LANCZOS)
+            src.save(output_path)
             os.remove(tmp_path)
             return True
     return False
 
 
-# Image generation config: 3:4 aspect ratio (closest to 4:5 = 800x1000)
+# Image generation config: 3:4 aspect ratio (750x1000)
 _IMAGE_CONFIG = None
 try:
     from google.genai import types as _gtypes
@@ -290,20 +284,21 @@ def _make_mask_image(w, h, y_center_pct, y_radius_pct):
 
 
 def _save_edit_result(response, output_path):
-    """Save result from edit_image API response."""
+    """Save result from edit_image API response.
+
+    Inpaint results should already match the input dimensions, so only
+    convert to grayscale. Resize/crop only if dimensions don't match.
+    """
     if response.generated_images:
         response.generated_images[0].image.save(output_path)
-        # Convert to grayscale 800x1000
         src = Image.open(output_path).convert("L")
-        sw, sh = src.size
-        target_w, target_h = 800, 1000
-        scale = max(target_w / sw, target_h / sh)
-        new_w, new_h = int(sw * scale), int(sh * scale)
-        resized = src.resize((new_w, new_h), Image.LANCZOS)
-        left = (new_w - target_w) // 2
-        top = (new_h - target_h) // 2
-        cropped = resized.crop((left, top, left + target_w, top + target_h))
-        cropped.save(output_path)
+        target_w, target_h = 750, 1000
+        if src.size == (target_w, target_h):
+            # Already correct size — just save grayscale
+            src.save(output_path)
+        else:
+            # Different size — resize to match exactly (no crop)
+            src.resize((target_w, target_h), Image.LANCZOS).save(output_path)
         return True
     return False
 
@@ -324,16 +319,21 @@ def generate_center(client, ref_images, output_dir, model, style_ref=None):
             "DO NOT copy the character from image 1. Draw the character from image 2 in the rendering style of image 1. "
             "The character should have bare shoulders with NO clothing — just like the style reference. "
             "Front-facing view, looking straight at the viewer. "
-            "CRITICAL FRAMING: PERFECTLY CENTERED, head-and-shoulders framing. White background."
+            "CRITICAL FRAMING: The ENTIRE head including ALL hair must be fully visible — "
+            "do NOT crop or cut off any part of the head or hair. "
+            "Show from the top of the hair down to mid-chest. Leave a small margin above the hair. "
+            "Horizontally centered. White background."
         )
     else:
         prompt = (
             "Draw this exact same anime character looking straight at the viewer (front view). "
             "Same art style, same hair, same face, same line weight and shading. "
             "The character should be facing DIRECTLY FORWARD, eyes looking at the viewer. "
-            "CRITICAL FRAMING: The character must be PERFECTLY CENTERED in the image — "
-            "equal space on left and right sides. The face should be at the vertical center "
-            "of the image, not shifted up or down. Head-and-shoulders framing. "
+            "CRITICAL FRAMING: The ENTIRE head including ALL hair must be fully visible — "
+            "do NOT crop or cut off any part of the head or hair. "
+            "Show from the top of the hair down to mid-chest (head-and-shoulders portrait). "
+            "Leave a small margin of white space above the hair. "
+            "The character must be horizontally centered with equal space on left and right. "
             "STYLE: Grayscale anime illustration with soft tonal shading — not pure line art, not overly dark. "
             "Hair should have moderate gray tones with subtle highlights, skin with light soft shading. "
             "Clothing and accessories must have clear tonal contrast — seams, patterns, shadows, and structural details "
@@ -382,8 +382,10 @@ def generate_view(client, ref_image, view_name, view_desc, output_dir, model, st
         f"same hair, same face, same expression, same clothing (or lack thereof), "
         f"same line weight and shading style — but {view_desc}. "
         f"CRITICAL: her EYES (irises/pupils) MUST look in the SAME direction as her head is facing. "
-        f"Keep the character centered in the frame. "
-        f"Keep the same head-to-body proportions and framing. "
+        f"The shoulders and upper body should naturally follow the head rotation — "
+        f"when the head turns left, the shoulders also angle slightly left. "
+        f"CRITICAL FRAMING: head-and-shoulders framing — the ENTIRE head including hair must be fully visible. "
+        f"Do NOT crop or cut off the top of the head. Keep the character centered with the same proportions as the reference. "
         f"{style_part}"
         f"White background."
     )
@@ -425,7 +427,8 @@ def generate_midpoint_view(client, img_a, img_b, view_name, direction_desc, outp
         f"The head rotation, tilt, and eye gaze should be EXACTLY HALFWAY between Image 1 and Image 2. "
         f"Her eyes (irises/pupils) MUST look in the same direction as her head is facing. "
         f"Keep the exact same character, art style, line weight, shading, hair, face, and proportions. "
-        f"Keep the character centered in frame. Grayscale only, white background."
+        f"CRITICAL FRAMING: head-and-shoulders framing — the ENTIRE head including hair must be fully visible. "
+        f"Do NOT crop or cut off the top of the head. Keep the character centered in frame. Grayscale only, white background."
     )
     prompt = f"{single} {single}"
 
@@ -497,7 +500,11 @@ def _inpaint(client, ref_path, mask_img, prompt, output_path, label):
 
 
 def _fallback_edit(client, ref_image, prompt, output_path, label, model):
-    """Fallback: use generate_content for editing."""
+    """Fallback: use generate_content for editing.
+
+    Uses direct resize (no crop) to preserve alignment with the original view.
+    """
+    target_w, target_h = 750, 1000
     for attempt in range(3):
         try:
             response = client.models.generate_content(
@@ -505,9 +512,15 @@ def _fallback_edit(client, ref_image, prompt, output_path, label, model):
                 contents=[ref_image, prompt],
                 config=_IMAGE_CONFIG,
             )
-            if _save_result(response, output_path):
-                print(f"  [{label}] saved (fallback) → {output_path}")
-                return True
+            for part in response.parts:
+                if part.inline_data is not None:
+                    tmp_path = output_path + ".tmp.png"
+                    part.as_image().save(tmp_path)
+                    src = Image.open(tmp_path).convert("L")
+                    src.resize((target_w, target_h), Image.LANCZOS).save(output_path)
+                    os.remove(tmp_path)
+                    print(f"  [{label}] saved (fallback) → {output_path}")
+                    return True
             print(f"  [{label}] no image in response, retrying...")
         except Exception as e:
             print(f"  [{label}] fallback error: {e}")
@@ -528,7 +541,7 @@ def generate_mouth_open(client, ref_image, output_dir, model):
 
     print(f"  [mouth_center] generating...")
     # Try inpainting first (mouth region: ~50%-58% of image height)
-    mask = _make_mask_image(800, 1000, y_center_pct=0.54, y_radius_pct=0.04)
+    mask = _make_mask_image(750, 1000, y_center_pct=0.54, y_radius_pct=0.04)
     if _inpaint(client, ref_path, mask, prompt, output_path, "mouth_center"):
         return output_path
 
@@ -557,7 +570,7 @@ def generate_blink_view(client, ref_image, view_name, output_dir, model):
 
     print(f"  [blink_{view_name}] generating...")
     # Try inpainting first (eye region: ~27%-43% of image height)
-    mask = _make_mask_image(800, 1000, y_center_pct=0.35, y_radius_pct=0.08)
+    mask = _make_mask_image(750, 1000, y_center_pct=0.35, y_radius_pct=0.08)
     if _inpaint(client, ref_path, mask, prompt, output_path, f"blink_{view_name}"):
         return output_path
 
@@ -616,7 +629,7 @@ def main():
 
     if not args.blink_only:
         # Copy reference as center view
-        ref_img = Image.open(args.reference).convert("L").resize((800, 1000), Image.LANCZOS)
+        ref_img = Image.open(args.reference).convert("L").resize((750, 1000), Image.LANCZOS)
         center_path = os.path.join(output_dir, "view_center.png")
         ref_img.save(center_path)
         print(f"  [center] copied reference → {center_path}")
