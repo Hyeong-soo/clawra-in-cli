@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ttypal"
+version = "0.1.0"
+description = "Interactive braille art chatbot companion for your terminal"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "opencv-python-headless",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+chat = ["google-genai"]
+setup = ["flask", "google-genai"]
+macos = ["pyobjc-framework-Quartz"]
+all = [
+    "google-genai",
+    "flask",
+    "pyobjc-framework-Quartz; sys_platform == 'darwin'",
+]
+
+[project.scripts]
+ttypal = "ttypal.live:main"
+ttypal-art = "ttypal.art:main"
+ttypal-setup = "ttypal.setup_views:main"
+ttypal-generate = "ttypal.generate_multiview:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ttypal"]

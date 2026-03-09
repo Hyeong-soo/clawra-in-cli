@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-clawra_live.py - Interactive anime Clawra with multi-view interpolation.
-Renders braille art that follows the mouse using pre-generated view images.
+ttypal — Interactive braille art chatbot companion for your terminal.
+Renders anime characters as braille art that follows the mouse.
 Uses optical flow warping for smooth transitions between views.
 """
 
@@ -148,16 +148,28 @@ def _wrap(s, width):
         result.append(cur + RST)
     return result or ['']
 
-# ─── Multi-view image loading ─────────────────────────────
+# ─── Config & setup ──────────────────────────────────────
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
+
+import shutil
+from .config import load_config, needs_setup, run_setup, get_api_key as _config_api_key
+
+# Run setup wizard on first launch or --setup flag
+if '--setup' in sys.argv:
+    sys.argv.remove('--setup')
+    _cfg = run_setup(force=True)
+elif needs_setup():
+    _cfg = run_setup()
+else:
+    _cfg = load_config()
+
+# ─── Multi-view image loading ─────────────────────────────
 
 # --character <name> to select a character (searches preset/ then custom/)
 # --views-dir <path> still works as direct override
 _CHARACTER_NAME = None
 _CHARACTER_DIR = None
-
-import shutil
 
 def _find_character_dir(name):
     """Find character directory: custom/<name> first, then copy from preset/<name>.
@@ -193,9 +205,13 @@ elif '--views-dir' in sys.argv:
     if _idx + 1 < len(sys.argv):
         _VIEWS_DIR = os.path.abspath(sys.argv[_idx + 1])
 else:
-    # Default: use clawra (copy from preset if needed)
-    _CHARACTER_NAME = 'clawra'
-    _CHARACTER_DIR = _find_character_dir('clawra')
+    # Default: use character from config (or clawra)
+    _CHARACTER_NAME = _cfg.get('character', 'clawra')
+    _CHARACTER_DIR = _find_character_dir(_CHARACTER_NAME)
+    if not _CHARACTER_DIR:
+        # Fallback to clawra if configured character not found
+        _CHARACTER_NAME = 'clawra'
+        _CHARACTER_DIR = _find_character_dir('clawra')
     _VIEWS_DIR = os.path.join(_CHARACTER_DIR, 'views')
 
 # View positions in (dx, dy) space: dx=-1(left)..+1(right), dy=-1(up)..+1(down)
@@ -641,8 +657,8 @@ _chat_speaking = False  # True during entire response cycle
 _chat_streaming = False # True only while tokens are arriving
 _MAX_CHAT = 20
 
-# API key: env var first, then 1Password
-_GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
+# API key: env var > config file
+_GEMINI_KEY = _config_api_key(_cfg)
 
 # Gemini client
 _gemini_client = None
@@ -650,7 +666,7 @@ if _HAS_GENAI and _GEMINI_KEY:
     _gemini_client = genai.Client(api_key=_GEMINI_KEY)
 
 # Memory manager (tiered memory system)
-from memory import MemoryManager
+from .memory import MemoryManager
 
 _char_dir_for_memory = _CHARACTER_DIR or os.path.join(_DIR, 'characters', 'preset', 'clawra')
 _memory = MemoryManager(

@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory
 from PIL import Image
 
-from generate_multiview import (
+from .generate_multiview import (
     ALL_VIEW_NAMES,
     INNER_MIDPOINT_VIEWS,
     MIDPOINT_VIEWS,
@@ -100,7 +100,7 @@ def _deps_met(view_name):
 
 def _generate_one(slot_name):
     """Generate a single view/blink/mouth. Called in thread pool."""
-    from generate_multiview import generate_blink_view
+    from .generate_multiview import generate_blink_view
     try:
         view_status[slot_name] = "generating"
         view_errors.pop(slot_name, None)

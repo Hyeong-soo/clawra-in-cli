@@ -1,5 +1,8 @@
 __pycache__/
 *.pyc
+*.egg-info/
+dist/
+build/
 /tmp/
 *.tmp.png
 .DS_Store
@@ -14,7 +17,7 @@ __pycache__/
 **/.memory/
 
 # Custom characters (copied from preset on first use)
-characters/custom/
+ttypal/characters/custom/
 
 # Misc
 clawra_base.png
