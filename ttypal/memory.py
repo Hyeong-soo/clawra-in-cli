@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-memory.py - Tiered memory system for clawra characters.
+memory.py - Tiered memory system for ttypal characters.
 
 Architecture based on Simon Kim's memory article:
   - soul.md:     Identity/persona (always injected)

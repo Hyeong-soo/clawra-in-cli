@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-setup_views.py — Browser-based interactive view setup tool for Clawra.
+setup_views.py — Browser-based interactive view setup tool for ttypal.
 
 Usage:
     python3 setup_views.py [ref1.png ref2.png ...] [--output-dir views_v2] [--port 5111]
@@ -280,7 +280,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Clawra View Setup</title>
+<title>ttypal View Setup</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
@@ -334,7 +334,7 @@ h1 { text-align: center; margin-bottom: 8px; font-size: 24px; color: #fff; }
 </head>
 <body>
 
-<h1>Clawra View Setup</h1>
+<h1>ttypal View Setup</h1>
 <p class="subtitle">5x5 Multi-View Grid &mdash; Generate, Review, Regenerate</p>
 
 <div class="refs-area">
@@ -550,7 +550,7 @@ def main():
 
     _base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    parser = argparse.ArgumentParser(description="Interactive view setup for Clawra")
+    parser = argparse.ArgumentParser(description="Interactive view setup for ttypal")
     parser.add_argument("references", nargs="*", help="Reference image(s) for center generation")
     parser.add_argument("--character", default=None, help="Character name (searches preset/ then custom/)")
     parser.add_argument("--preset", action="store_true", help="Force preset directory (with --character)")

@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-clawra_art.py - Draw Clawra in your terminal
+ttypal-art — Terminal art showcase.
 
 Usage:
-    python clawra_art.py              # Full display (banner + character + info)
-    python clawra_art.py --banner     # Logo banner only
-    python clawra_art.py --character  # ASCII character art only
-    python clawra_art.py --image      # High-quality image conversion (requires Pillow)
-    python clawra_art.py --image -w 60  # Custom width for image mode
-    python clawra_art.py --pixel      # Pixel art version using half-blocks
-    python clawra_art.py --all        # Show everything
+    ttypal-art                  # Full display (banner + character + info)
+    ttypal-art --banner         # Logo banner only
+    ttypal-art --character      # ASCII character art only
+    ttypal-art --image -w 60    # High-quality image conversion (requires Pillow)
+    ttypal-art --pixel          # Pixel art version using half-blocks
+    ttypal-art --all            # Show everything
 
-Requires: Python 3.6+
+Requires: Python 3.10+
 Optional: Pillow (pip install Pillow) for --image mode
 """
 
@@ -54,12 +53,12 @@ BLUSH   = fg(255, 180, 175)
 def banner():
     a = PINK
     return f"""
-{a}{BOLD}   ██████╗ ██╗       █████╗  ██╗    ██╗ ██████╗   █████╗
-  ██╔════╝ ██║      ██╔══██╗ ██║    ██║ ██╔══██╗ ██╔══██╗
-  ██║      ██║      ███████║ ██║ █╗ ██║ ██████╔╝ ███████║
-  ██║      ██║      ██╔══██║ ██║███╗██║ ██╔══██╗ ██╔══██║
-  ╚██████╗ ███████╗ ██║  ██║ ╚███╔███╔╝ ██║  ██║ ██║  ██║
-   ╚═════╝ ╚══════╝ ╚═╝  ╚═╝  ╚══╝╚══╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝{RST}
+{a}{BOLD}  ████████╗████████╗██╗   ██╗██████╗  █████╗ ██╗
+  ╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝██╔══██╗██╔══██╗██║
+     ██║      ██║    ╚████╔╝ ██████╔╝███████║██║
+     ██║      ██║     ╚██╔╝  ██╔═══╝ ██╔══██║██║
+     ██║      ██║      ██║   ██║     ██║  ██║███████╗
+     ╚═╝      ╚═╝      ╚═╝   ╚═╝     ╚═╝  ╚═╝╚══════╝{RST}
 """
 
 # ─── ASCII Character Art ────────────────────────────────────
@@ -221,15 +220,15 @@ def render_pixel_art(pixel_rows=None, palette=None, indent=4):
 
 # ─── Image-to-Terminal Converter ─────────────────────────────
 
-CLAWRA_IMG_URL = "https://cdn.jsdelivr.net/gh/SumeLabs/clawra@main/assets/clawra.png"
+_DEFAULT_IMG_URL = "https://cdn.jsdelivr.net/gh/SumeLabs/clawra@main/assets/clawra.png"
 
 def download_reference_image():
-    """Download the Clawra reference image"""
-    path = os.path.join(tempfile.gettempdir(), "clawra_ref.png")
+    """Download a sample reference image for demo modes."""
+    path = os.path.join(tempfile.gettempdir(), "ttypal_ref.png")
     if not os.path.exists(path):
         try:
             print(f"{GRAY}Downloading reference image...{RST}")
-            urllib.request.urlretrieve(CLAWRA_IMG_URL, path)
+            urllib.request.urlretrieve(_DEFAULT_IMG_URL, path)
         except Exception as e:
             print(f"{RED}Download failed: {e}{RST}")
             return None
@@ -422,17 +421,17 @@ def image_to_ascii(img_path, width=80, color=True, ramp='detailed', invert=False
 
 def info_text():
     return f"""
-  {BLUE}{BOLD}Your AI Companion{RST}  {RED}❤{RST}  {PINK}clawra.love{RST}
+  {BLUE}{BOLD}ttypal{RST}  {GRAY}—{RST}  {PINK}Interactive braille art chatbot for your terminal{RST}
 
-  {GRAY}Discord · Telegram · WhatsApp{RST}
-  {GRAY}AI Selfies · 24/7 Online · Customizable{RST}
+  {GRAY}pip install ttypal{RST}
+  {GRAY}github.com/SumeLabs/ttypal{RST}
 """
 
 # ─── Main ────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Clawra Terminal Art - Draw Clawra in your terminal',
+        description='ttypal-art — Terminal art showcase',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 modes:
@@ -446,12 +445,12 @@ modes:
   --all            Show all art styles
 
 examples:
-  python clawra_art.py
-  python clawra_art.py --ascii -w 80           Classic ASCII portrait
-  python clawra_art.py --ascii -w 100 --ramp blocks  Block shading
-  python clawra_art.py --ascii --no-color      Monochrome ASCII
-  python clawra_art.py --image -w 60
-  python clawra_art.py --all
+  ttypal-art
+  ttypal-art --ascii -w 80              Classic ASCII portrait
+  ttypal-art --ascii -w 100 --ramp blocks  Block shading
+  ttypal-art --ascii --no-color         Monochrome ASCII
+  ttypal-art --image -w 60
+  ttypal-art --all
         """
     )
     parser.add_argument('--banner', action='store_true', help='Show logo banner only')
