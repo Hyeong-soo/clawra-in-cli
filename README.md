@@ -1,6 +1,6 @@
-# clawra-in-cli
+# ttypal
 
-Interactive anime character rendered as braille unicode art in your terminal. She follows your mouse, blinks, and chats with you via Gemini.
+Interactive braille art chatbot companion for your terminal. Characters follow your mouse, blink, talk, and remember you.
 
 ```
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣤⠤⣒⣒⣒⣶⣭⣭⣭⣭⣭⣭⣭⣹⣒⣒⣒⣒⣒⣒⣒⣒⠤⢄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -16,13 +16,13 @@ Interactive anime character rendered as braille unicode art in your terminal. Sh
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣏⣾⣿⣿⣾⣿⣿⣿⣿⢇⠀⢸⢡⠇⣆⣾⣿⣱⣿⢹⣼⡟⡸⡆⠙⣾⣧⠠⣄⢻⣿⣿⣿⣿⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⠹⡓⢌⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⢋⣾⣿⣿⣿⣿⣿⣿⣿⣸⣾⣿⣿⣿⣿⣿⣿⣿⡇⠈⣿⣿⣷⣿⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⢝⣆⠙⢈⠢⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢡⠏⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠁⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡙⡦⡀⠃⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡁⢹⢸⣿⣿⣿⣿⣿⣿⣿⢻⣿⣿⣿⣿⣿⣿⡿⣿⣿⠀⠀⠀⠹⣿⡻⣿⣟⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣟⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡘⡌⢣⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡁⢹⢸⣿⣿⣿⣿⣿⣿⣿⢻⣿⣿⣿⣿⣿⣿⡿⣿⣿⠀⠀⠀⠹⣿⡻⣿⣟⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣟⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡘⡌⢣⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠁⢃⢸⣿⣿⣿⣿⣿⣿⣿⠤⣿⣿⣿⣿⣿⣿⡇⢿⣿⣤⣤⣤⠤⠬⠿⣬⠿⣧⡙⢿⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣿⣿⣿⣿⣿⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢧⢹⡈⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⡀⠘⣼⡟⣿⣿⣿⣿⣿⣿⣆⣌⢻⣿⠣⣻⣌⢧⠈⢻⡇⠀⢀⣀⡠⣄⣈⡑⠌⠳⢄⠈⠛⠷⣝⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⣉⠴⠒⡠⣌⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⣿⣿⣿⣿⣿⡼⢸⢱⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠳⣄⠈⢿⣾⣿⣿⣿⣿⣿⣿⠻⠷⣮⡳⡉⠣⡙⢆⠀⠙⢆⡳⠾⠛⢛⡿⢿⣿⣶⣶⣍⡀⠀⠀⠉⠀⣽⣿⣿⣿⣿⣿⣿⣿⣿⢿⣿⠿⠋⠀⠞⠓⠊⠀⠹⠘⡆⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⢡⠃⢸⡸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⣸⠛⡎⣿⣻⣿⣿⣿⣆⢷⢿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⢻⣿⣯⠿⠿⠟⠃⠀⠀⢠⣿⣿⣿⣿⣿⣿⣿⡿⠃⢸⣿⠃⠀⡀⠏⠉⠉⡆⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⢰⠁⢀⠞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠔⠁⢠⣣⠃⠙⣝⣿⣿⣿⠦⠷⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣬⠷⠬⠔⠛⠁⠀⠀⢀⣠⢟⣩⣿⣿⡿⣫⣾⠟⠀⠀⡸⠃⠀⣠⠞⠀⢀⠔⠃⠔⣡⣾⣿⣿⣿⣿⣿⣿⣻⣿⣿⣿⣿⣿⡽⡿⢩⢰⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⡝⠁⠀⠀⡸⢫⣿⣻⠗⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢔⡶⠟⠋⣽⣽⠿⠋⢀⡟⠁⠀⠀⠀⠀⠀⠘⠋⠉⠉⠀⢀⣴⣾⣿⣿⣿⣿⣿⣿⣿⣵⣿⣿⣼⣿⣿⣳⣟⣠⠅⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠔⠁⢠⣣⠃⠙⣝⣿⣿⣿⠦⠷⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣬⠷⠬⠔⠛⠁⠀⠀⢀⣠⢟⣩⣿⣿⡿⣫⣾⠟⠀⠀⡸⠃⠀⣠⠞⠀⢀⠔⠃⠔⣡⣾⣿⣿⣿⣿⣿⣻⣿⣿⣿⣿⣿⡽⡿⢩⢰⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⡝⠁⠀⠀⡸⢫⣿⣻⠗⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢔⡶⠟⠋⣽⣽⠿⠋⢀⡟⠁⠀⠀⠀⠀⠀⠘⠋⠉⠉⠀⢀⣴⣾⣿⣿⣿⣿⣿⣿⣵⣿⣿⣼⣿⣿⣳⣟⣠⠅⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢇⠀⢀⠴⢃⢯⡾⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠋⠀⠀⢰⣽⠃⠀⠀⠈⢧⡀⠀⠀⠀⢀⡤⣤⣀⣠⣤⣾⣿⣿⣿⣿⣿⣿⣿⢿⣿⣿⣿⣿⡿⡿⡻⠋⢸⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠃⠀⠸⣸⢻⠹⡝⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠣⠀⠀⠀⠈⢯⠀⠀⠀⠀⠀⠉⠀⠀⡴⠋⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣵⣿⣿⡿⣻⠷⣹⡗⠁⠀⠘⢆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⠀⠀⠀⠙⢾⣄⠹⣜⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠀⠀⠀⠀⠀⠀⠊⠀⠀⠀⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⡾⡡⠊⠀⢳⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -38,29 +38,54 @@ Interactive anime character rendered as braille unicode art in your terminal. Sh
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠢⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ```
 
-## Features
-
-- **Mouse tracking** — 17 pre-generated views with optical flow interpolation on a 5x5 grid. She smoothly follows your cursor across the terminal.
-- **Blink animation** — 17 blink views with random intervals (2-5s). Natural triangle-wave eyelid movement.
-- **Chat with Gemini** — Press Enter to chat. Streaming responses with character-by-character typing effect.
-- **Mouth animation** — Opens and closes while she's speaking, stays still while thinking.
-- **Braille unicode art** — 2x4 pixel grid per character using U+2800-U+28FF. OTSU threshold binarization.
-- **Multi-tab terminal support** — Quartz global mouse tracking with automatic pane calibration.
-- **Auto-fit** — Character art scales to your terminal size.
-- **Persistent history** — Conversations saved to `~/.clawra_history.json`.
-
-## Setup
+## Install
 
 ```bash
-# Dependencies
-pip install Pillow numpy opencv-python google-genai
-
-# API key (required for chat)
-export GEMINI_API_KEY="your-key-here"
-
-# Run
-python3 clawra_live.py
+pip install ttypal[all]
 ```
+
+Or install with only the features you need:
+
+```bash
+pip install ttypal              # Core only (view rendering, no chat)
+pip install ttypal[chat]        # + Gemini chat
+pip install ttypal[setup]       # + View generation UI (Flask + Gemini)
+pip install ttypal[macos]       # + Global mouse tracking (Quartz)
+```
+
+## Quick Start
+
+```bash
+ttypal
+```
+
+On first run, a setup wizard will guide you through:
+
+1. **Gemini API key** — Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. **Character selection** — Pick a preset or create your own
+
+Config is saved to `~/.ttypal/config.json`. Run `ttypal --setup` to change settings later.
+
+## Features
+
+- **Mouse tracking** — 25 pre-generated views on a 5x5 grid with optical flow interpolation. The character smoothly follows your cursor.
+- **Blink & mouth animation** — Natural blink intervals with triangle-wave eyelid movement. Mouth opens while speaking.
+- **Gemini chat** — Press Enter to chat. Streaming responses with character-by-character typing effect. Character personality loaded from `soul.md`.
+- **Tiered memory** — The character remembers you across sessions. User profile, tiered memories (M0/M30/M90/M365), diary, and lessons learned.
+- **Multiple characters** — Preset characters (Clawra, Aska) included. Create your own with reference images.
+- **Compressed views** — Character views stored as ~6MB npz cache instead of ~270MB PNGs.
+- **Auto-fit** — Braille art scales to your terminal size.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `ttypal` | Start the interactive chatbot |
+| `ttypal --character aska` | Use a specific character |
+| `ttypal --setup` | Re-run the setup wizard |
+| `ttypal-art` | Terminal art showcase (banner, pixel art, braille) |
+| `ttypal-setup` | Browser UI for generating character views |
+| `ttypal-generate` | CLI tool for batch view generation |
 
 ## Controls
 
@@ -70,39 +95,47 @@ python3 clawra_live.py
 | **ESC** | Exit chat mode |
 | **q** | Quit (outside chat mode) |
 
-## How it works
+## Creating Custom Characters
 
-1. **Views** — 17 grayscale images generated via Gemini image generation, covering 8 directions + center
-2. **Optical flow** — Dense flow fields between adjacent views, cached in `.flow_cache.npz` for fast startup
-3. **5x5 grid** — 17 real views on the outer ring + 8 flow-synthesized inner views. Bilinear interpolation with smoothstep easing
-4. **Dead zone** — Pure center view within radius 0.4, smooth crossfade to directional views
-5. **Chat** — Gemini API with streaming. Clawra's personality loaded from `soul.md`
+1. Run `ttypal --setup` and select "Create custom character"
+2. Add reference images to `ttypal/characters/custom/<name>/refs/`
+3. Edit `ttypal/characters/custom/<name>/soul.md` with the character's personality
+4. Generate views: `ttypal-setup --character <name>`
 
-## Generating views
+## How It Works
 
-```bash
-# Generate all 17 views from a reference image
-python3 generate_multiview.py reference.png --angles 17
+1. **Views** — 25 grayscale images generated via Gemini, covering a 5x5 directional grid
+2. **Optical flow** — Dense flow fields between adjacent views, cached in `.flow_cache.npz`
+3. **Interpolation** — Bilinear interpolation on the 5x5 grid with smoothstep easing and a center dead zone
+4. **Braille rendering** — 2x4 pixel grid per Unicode braille character (U+2800-U+28FF) with Otsu thresholding
+5. **Memory** — Background Gemini extraction every 5 turns: user facts, tiered memories with expiry dates, daily diary, lessons learned. Boot ritual reconstructs context from persistent files.
 
-# Generate blink views
-python3 generate_multiview.py reference.png --blink-only
-```
-
-## Project structure
+## Project Structure
 
 ```
-clawra_live.py          # Main runtime
-generate_multiview.py   # View image generation via Gemini
-soul.md                 # Clawra's personality
-views/
-  view_*.png            # 17 directional views
-  blink_*.png           # 17 blink views
-  mouth_center.png      # Mouth-open center view
-  .flow_cache.npz       # Cached optical flows (~250MB, gitignored)
+ttypal/
+  __init__.py              # Package version
+  live.py                  # Main interactive runtime
+  art.py                   # Terminal art showcase
+  config.py                # Config management & setup wizard
+  memory.py                # Tiered memory system
+  setup_views.py           # Browser-based view generation UI
+  generate_multiview.py    # Gemini view generation
+  characters/
+    preset/
+      clawra/              # Preset: K-pop dreamer turned SF intern
+        soul.md
+        refs/
+        views/views.npz
+      aska/                # Preset: Fierce EVA pilot from Berlin
+        soul.md
+        refs/
+        views/views.npz
+pyproject.toml
 ```
 
 ## Requirements
 
-- macOS (Quartz for global mouse tracking)
 - Python 3.10+
-- Terminal with unicode/braille support
+- Terminal with Unicode braille support
+- macOS recommended (Quartz for global mouse tracking; other OS uses terminal mouse only)
