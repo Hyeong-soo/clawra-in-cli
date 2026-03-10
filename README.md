@@ -73,7 +73,8 @@ Config is saved to `~/.ttypal/config.json`. Run `ttypal --setup` to change setti
 - **Gemini chat** — Press Enter to chat. Streaming responses with character-by-character typing effect. Character personality loaded from `soul.md`.
 - **Tiered memory** — The character remembers you across sessions. User profile, tiered memories (M0/M30/M90/M365), diary, and lessons learned.
 - **Multiple characters** — Preset characters (Clawra, Aska) included. Create your own with reference images.
-- **Compressed views** — Character views stored as ~6MB npz cache instead of ~270MB PNGs.
+- **Compressed views** — Character views stored as ~6MB npz cache instead of ~270MB PNGs. Auto-packed on view generator shutdown.
+- **Per-character gaze origin** — Click between the eyes to calibrate mouse tracking per character (`gaze.json`).
 - **Auto-fit** — Braille art scales to your terminal size.
 
 ## Commands
@@ -98,9 +99,12 @@ Config is saved to `~/.ttypal/config.json`. Run `ttypal --setup` to change setti
 ## Creating Custom Characters
 
 1. Run `ttypal --setup` and select "Create custom character"
-2. Add reference images to `ttypal/characters/custom/<name>/refs/`
-3. Edit `ttypal/characters/custom/<name>/soul.md` — see below
-4. Generate views: `ttypal-setup --character <name>`
+2. Name your character and define personality:
+   - **Existing character?** Enter the name (e.g. "Reze from Chainsaw Man") — Gemini auto-generates `soul.md`
+   - **Original character?** Answer 4 prompts (backstory, conflict, voice, rules) to build `soul.md` manually
+3. Add reference images to `ttypal/characters/custom/<name>/refs/`
+4. Generate views: `ttypal-setup --character <name>` — opens a browser UI to generate & review all 25 views + blinks
+5. Click **"Finish & Pack NPZ"** to set the gaze origin (click between the character's eyes) and pack views into `views.npz`
 
 ### Writing soul.md
 
@@ -119,17 +123,18 @@ You are Name.
 [Behavior rules — concrete do/don't for the LLM.]
 ```
 
-Keep it under 200 words. Contradictions make characters feel real (confident but secretly insecure, tough but caring). Voice matters more than lore — how they *talk* is the personality.
+Keep it under 200 words. Write in third person ("She is...", not "You are..."). Contradictions make characters feel real (confident but secretly insecure, tough but caring). Voice matters more than lore — how they *talk* is the personality.
 
 See `ttypal/characters/preset/clawra/soul.md` and `aska/soul.md` for examples.
 
 ## How It Works
 
-1. **Views** — 25 grayscale images generated via Gemini, covering a 5x5 directional grid
+1. **Views** — 25 grayscale images (750x1000, 3:4) generated via Gemini, covering a 5x5 directional grid
 2. **Optical flow** — Dense flow fields between adjacent views, cached in `.flow_cache.npz`
 3. **Interpolation** — Bilinear interpolation on the 5x5 grid with smoothstep easing and a center dead zone
 4. **Braille rendering** — 2x4 pixel grid per Unicode braille character (U+2800-U+28FF) with Otsu thresholding
 5. **Memory** — Background Gemini extraction every 5 turns: user facts, tiered memories with expiry dates, daily diary, lessons learned. Boot ritual reconstructs context from persistent files.
+6. **View generation** — Two-phase process: center → 8 cardinal/diagonal views → 16 midpoints via two-reference interpolation. Blinks via inpainting. NPZ auto-packing.
 
 ## Project Structure
 
@@ -150,6 +155,12 @@ ttypal/
         views/views.npz
       aska/                # Preset: Fierce EVA pilot from Berlin
         soul.md
+        refs/
+        views/views.npz
+    custom/                # User-created characters
+      <name>/
+        soul.md
+        gaze.json          # Gaze origin calibration
         refs/
         views/views.npz
 pyproject.toml
