@@ -19,6 +19,9 @@ build/
 # Custom characters (copied from preset on first use)
 ttypal/characters/custom/
 
+# Virtual environment
+.venv/
+
 # Misc
 clawra_base.png
 preview.html
