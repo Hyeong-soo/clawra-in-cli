@@ -53,6 +53,14 @@ pip install ttypal[setup]       # + View generation UI (Flask + Gemini)
 pip install ttypal[macos]       # + Global mouse tracking (Quartz)
 ```
 
+### Development
+
+```bash
+uv sync --all-extras            # Create venv + install all deps
+uv run ttypal                   # Run without activating venv
+uv run ttypal-setup             # View generation UI
+```
+
 ## Quick Start
 
 ```bash
@@ -72,7 +80,7 @@ Config is saved to `~/.ttypal/config.json`. Run `ttypal --setup` to change setti
 - **Blink & mouth animation** — Natural blink intervals with triangle-wave eyelid movement. Mouth opens while speaking.
 - **Gemini chat** — Press Enter to chat. Streaming responses with character-by-character typing effect. Character personality loaded from `soul.md`.
 - **Tiered memory** — The character remembers you across sessions. User profile, tiered memories (M0/M30/M90/M365), diary, and lessons learned.
-- **Multiple characters** — Preset characters (Clawra, Aska) included. Create your own with reference images.
+- **Multiple characters** — Preset characters (Clawra, Aska, Reze) included. Create your own with reference images.
 - **Compressed views** — Character views stored as ~6MB npz cache instead of ~270MB PNGs. Auto-packed on view generator shutdown.
 - **Per-character gaze origin** — Click between the eyes to calibrate mouse tracking per character (`gaze.json`).
 - **Auto-fit** — Braille art scales to your terminal size.
@@ -157,6 +165,11 @@ ttypal/
         soul.md
         refs/
         views/views.npz
+      reze/                # Preset: Bomb Girl from Chainsaw Man
+        soul.md
+        gaze.json
+        refs/
+        views/views.npz
     custom/                # User-created characters
       <name>/
         soul.md
@@ -164,6 +177,7 @@ ttypal/
         refs/
         views/views.npz
 pyproject.toml
+uv.lock                  # Dependency lock file
 ```
 
 ## Requirements
@@ -171,3 +185,4 @@ pyproject.toml
 - Python 3.10+
 - Terminal with Unicode braille support
 - macOS recommended (Quartz for global mouse tracking; other OS uses terminal mouse only)
+- [uv](https://docs.astral.sh/uv/) recommended for development
