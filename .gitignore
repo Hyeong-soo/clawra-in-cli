@@ -10,6 +10,9 @@ build/
 # Generated view PNGs (regenerate with setup_views.py, cached in views.npz)
 **/views/*.png
 
+# Reference images (only needed for view generation)
+**/refs/
+
 # Optical flow cache (regenerated on startup)
 **/views/.flow_cache.npz
 
