@@ -739,6 +739,10 @@ class App:
     def _init_chat(self, cfg):
         self.provider = create_provider(cfg)
 
+        # Initialize session for CLI-based providers
+        if self.provider and hasattr(self.provider, 'init_session'):
+            self.provider.init_session(self.character_name or 'clawra')
+
         char_dir = self.character_dir or os.path.join(_DIR, 'characters', 'preset', 'clawra')
         self.memory = MemoryManager(
             char_dir,

@@ -194,39 +194,64 @@ class AnthropicProvider(ChatProvider):
 
 
 class CLIProvider(ChatProvider):
-    """Chat via CLI tools like `claude -p`. No API key needed."""
+    """Chat via `claude -p` with session persistence via `-r`.
 
-    def __init__(self, command='claude', args=None):
+    Session flow:
+      1st message: claude -p --session-id <uuid> --system-prompt <soul+memory> "msg"
+      Nth message: claude -p -r <uuid> "msg"
+
+    Claude Code manages conversation history — no need to pack history into prompts.
+    Memory extraction uses separate one-shot calls.
+    """
+
+    def __init__(self, command='claude', model=None, session_id=None):
         import shutil
         self.command = command
-        self.args = args if args is not None else ['-p']
+        self.model = model
+        self._session_id = session_id  # set per-character in init_session()
+        self._session_started = False
         if not shutil.which(command):
             raise FileNotFoundError(
                 f"'{command}' not found in PATH. "
                 f"Install it or choose a different provider."
             )
 
-    def _build_prompt(self, messages, system_prompt=None):
-        parts = []
-        if system_prompt:
-            parts.append(f"<system>\n{system_prompt}\n</system>\n")
-        for m in messages:
-            tag = "user" if m["role"] == "user" else "assistant"
-            parts.append(f"<{tag}>\n{m['content']}\n</{tag}>\n")
-        return '\n'.join(parts)
+    def init_session(self, character_name):
+        """Generate a deterministic session ID for this character."""
+        import uuid
+        self._session_id = str(uuid.uuid5(
+            uuid.NAMESPACE_DNS, f'ttypal.{character_name}'
+        ))
+        self._session_started = False
 
     def stream_chat(self, messages, system_prompt, max_tokens=2048):
         import subprocess
-        prompt = self._build_prompt(messages, system_prompt)
+
+        # Only send the latest user message — Claude Code session has the rest
+        last_msg = messages[-1]['content'] if messages else ''
+
+        cmd = [self.command, '-p']
+
+        if not self._session_started and self._session_id:
+            # First message: create session with system prompt
+            cmd += ['--session-id', self._session_id]
+            cmd += ['--system-prompt', system_prompt]
+            self._session_started = True
+        elif self._session_id:
+            # Resume existing session
+            cmd += ['-r', self._session_id]
+
+        if self.model:
+            cmd += ['--model', self.model]
+
+        cmd.append(last_msg)
+
         proc = subprocess.Popen(
-            [self.command] + self.args,
-            stdin=subprocess.PIPE,
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        proc.stdin.write(prompt)
-        proc.stdin.close()
 
         while True:
             chunk = proc.stdout.read(1)
@@ -237,13 +262,19 @@ class CLIProvider(ChatProvider):
         proc.wait()
         if proc.returncode != 0:
             err = proc.stderr.read()[:200]
+            self._session_started = False  # retry session creation next time
             yield f' (error: {err})'
 
     def generate(self, prompt, max_tokens=4096, temperature=0.1, json_mode=False):
+        """One-shot generation (for memory extraction). No session."""
         import subprocess
+        cmd = [self.command, '-p']
+        if self.model:
+            cmd += ['--model', self.model]
+        cmd.append(prompt)
+
         result = subprocess.run(
-            [self.command] + self.args,
-            input=prompt,
+            cmd,
             capture_output=True,
             text=True,
             timeout=120,
@@ -313,6 +344,7 @@ def create_provider(cfg):
 
     elif provider_name == 'claude-cli':
         command = cfg.get('cli_command', 'claude')
-        return CLIProvider(command=command)
+        model = cfg.get('chat_model')
+        return CLIProvider(command=command, model=model)
 
     return None
