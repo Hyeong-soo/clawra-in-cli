@@ -117,26 +117,36 @@ class MemoryManager:
     # ── Boot: distillation (expiry + promotion) ──────────────
 
     def _distill_on_boot(self):
-        """Remove expired memories and promote recurring ones."""
+        """Remove expired memories, promote recurring ones, rotate old diaries."""
         content = self._read(self.memory_path)
-        if not content:
-            return
+        if content:
+            today_str = date.today().isoformat()
+            lines = content.split('\n')
+            new_lines = []
+            expired_count = 0
 
-        today_str = date.today().isoformat()
-        lines = content.split('\n')
-        new_lines = []
-        expired_count = 0
+            for line in lines:
+                m = re.search(r'<!--\s*expires:\s*(\d{4}-\d{2}-\d{2})\s*-->', line)
+                if m and m.group(1) < today_str:
+                    expired_count += 1
+                    continue
+                new_lines.append(line)
 
-        for line in lines:
-            m = re.search(r'<!--\s*expires:\s*(\d{4}-\d{2}-\d{2})\s*-->', line)
-            if m and m.group(1) < today_str:
-                expired_count += 1
-                continue
-            new_lines.append(line)
+            if expired_count > 0:
+                with open(self.memory_path, 'w') as f:
+                    f.write('\n'.join(new_lines))
 
-        if expired_count > 0:
-            with open(self.memory_path, 'w') as f:
-                f.write('\n'.join(new_lines))
+        self._rotate_diaries()
+
+    def _rotate_diaries(self, max_days=90):
+        """Remove diary entries older than max_days."""
+        cutoff = (date.today() - timedelta(days=max_days)).isoformat()
+        try:
+            for fname in os.listdir(self.diary_dir):
+                if fname.endswith('.md') and fname[:10] < cutoff:
+                    os.remove(os.path.join(self.diary_dir, fname))
+        except OSError:
+            pass
 
     # ── System prompt (boot ritual) ──────────────────────────
 
@@ -290,15 +300,31 @@ class MemoryManager:
         self._apply_diary(data.get('diary', ''), today_str)
         self._apply_lesson(data.get('lesson'), today_str)
 
+    @staticmethod
+    def _extract_bullet_items(content):
+        """Extract set of bullet item texts from markdown content."""
+        items = set()
+        for line in content.split('\n'):
+            line = line.strip()
+            if line.startswith('- '):
+                # Strip date prefix and expiry comments for comparison
+                core = re.sub(r'<!--.*?-->', '', line[2:]).strip()
+                core = re.sub(r'^\[\d{4}-\d{2}-\d{2}\]\s*', '', core).strip()
+                if core:
+                    items.add(core)
+        return items
+
     def _apply_user_facts(self, facts):
         if not facts:
             return
         content = self._read(self.user_path)
+        existing = self._extract_bullet_items(content)
         changed = False
         for fact in facts:
             fact = fact.strip()
-            if fact and fact not in content:
+            if fact and fact not in existing:
                 content += f"\n- {fact}"
+                existing.add(fact)
                 changed = True
         if changed:
             with open(self.user_path, 'w') as f:
@@ -313,7 +339,10 @@ class MemoryManager:
         for item in items:
             tier = item.get('tier', 'M30')
             text = item.get('text', '').strip()
-            if not text or text in content:
+            if not text:
+                continue
+            existing = self._extract_bullet_items(content)
+            if text in existing:
                 continue
 
             # Build entry with expiry
@@ -422,7 +451,8 @@ class MemoryManager:
         if not lesson or not lesson.strip():
             return
         content = self._read(self.lessons_path)
-        if lesson in content:
+        existing = self._extract_bullet_items(content)
+        if lesson.strip() in existing:
             return
         content += f"\n\n## [{today_str}]\n- {lesson}"
         with open(self.lessons_path, 'w') as f:
