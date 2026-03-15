@@ -38,16 +38,27 @@ _TIER_HEADERS = {
 
 _TIER_DAYS = {'M30': 30, 'M90': 90, 'M365': 365}
 
-_EXTRACT_MODEL = 'gemini-3.1-flash-lite-preview'
-
-
 class MemoryManager:
     EXTRACT_INTERVAL = 5  # extract after every N user-model exchanges
 
-    def __init__(self, character_dir, gemini_client=None, character_name=None):
+    def __init__(self, character_dir, provider=None, character_name=None,
+                 gemini_client=None):
         self.char_dir = character_dir
-        self.client = gemini_client
+        self.provider = provider
         self.char_name = character_name or os.path.basename(character_dir)
+
+        # Backwards compatibility: wrap bare Gemini client in a provider
+        if self.provider is None and gemini_client is not None:
+            from .providers import GeminiProvider
+            self.provider = GeminiProvider.__new__(GeminiProvider)
+            self.provider.client = gemini_client
+            self.provider.chat_model = 'gemini-3-flash-preview'
+            self.provider.extract_model = 'gemini-3.1-flash-lite-preview'
+            try:
+                from google.genai import types as gtypes
+                self.provider._gtypes = gtypes
+            except ImportError:
+                pass
         self._lock = threading.Lock()
         self._turns_since_extract = 0
         self._extracting = False
@@ -203,7 +214,7 @@ class MemoryManager:
         """Called after each model response. Triggers extraction if due."""
         self._turns_since_extract += 1
         if (self._turns_since_extract >= self.EXTRACT_INTERVAL
-                and self.client and not self._extracting):
+                and self.provider and not self._extracting):
             self._turns_since_extract = 0
             threading.Thread(
                 target=self._extract_bg,
@@ -222,15 +233,20 @@ class MemoryManager:
 
     # ── Fact extraction via Gemini ────────────────────────────
 
+    @staticmethod
+    def _msg_text(m):
+        """Extract text from a message (supports both old and new format)."""
+        return m.get('content') or m.get('parts', [{}])[0].get('text', '')
+
     def _extract(self, messages):
-        """Use Gemini to extract facts, memories, diary, lessons from conversation."""
-        if not messages or not self.client:
+        """Use LLM to extract facts, memories, diary, lessons from conversation."""
+        if not messages or not self.provider:
             return
 
         recent = messages[-10:]
         conv_text = '\n'.join(
             f"{'user' if m['role'] == 'user' else self.char_name}: "
-            f"{m['parts'][0]['text']}"
+            f"{self._msg_text(m)}"
             for m in recent
         )
 
@@ -274,18 +290,8 @@ class MemoryManager:
         )
 
         try:
-            from google.genai import types as gtypes
-            resp = self.client.models.generate_content(
-                model=_EXTRACT_MODEL,
-                contents=[{"role": "user", "parts": [{"text": prompt}]}],
-                config=gtypes.GenerateContentConfig(
-                    max_output_tokens=4096,
-                    temperature=0.1,
-                    response_mime_type='application/json',
-                ),
-            )
-
-            text = resp.text.strip()
+            text = self.provider.generate(prompt, max_tokens=4096,
+                                          temperature=0.1, json_mode=True)
             data = json.loads(text)
             with self._lock:
                 self._apply(data, today_str)
@@ -462,12 +468,12 @@ class MemoryManager:
 
     def on_history_compact(self, old_messages):
         """Summarize messages being dropped from sliding window -> diary."""
-        if not self.client or not old_messages:
+        if not self.provider or not old_messages:
             return
 
         conv_text = '\n'.join(
             f"{'user' if m['role'] == 'user' else self.char_name}: "
-            f"{m['parts'][0]['text']}"
+            f"{self._msg_text(m)}"
             for m in old_messages
         )
 
@@ -479,16 +485,8 @@ class MemoryManager:
         )
 
         try:
-            from google.genai import types as gtypes
-            resp = self.client.models.generate_content(
-                model=_EXTRACT_MODEL,
-                contents=[{"role": "user", "parts": [{"text": prompt}]}],
-                config=gtypes.GenerateContentConfig(
-                    max_output_tokens=256,
-                    temperature=0.1,
-                ),
-            )
-            summary = resp.text.strip()
+            summary = self.provider.generate(prompt, max_tokens=256,
+                                             temperature=0.1)
             if not summary:
                 return
 
@@ -509,5 +507,5 @@ class MemoryManager:
 
     def on_session_end(self, chat_history):
         """Final extraction when the user exits. Runs synchronously."""
-        if self.client and chat_history:
+        if self.provider and chat_history:
             self._extract(chat_history)

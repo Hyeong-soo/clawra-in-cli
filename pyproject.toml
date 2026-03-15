@@ -16,11 +16,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-chat = ["google-genai"]
+gemini = ["google-genai"]
+openai = ["openai"]
+anthropic = ["anthropic"]
+chat = ["google-genai"]  # backwards compat: default to gemini
 setup = ["flask", "google-genai"]
 macos = ["pyobjc-framework-Quartz"]
 all = [
     "google-genai",
+    "openai",
+    "anthropic",
     "flask",
     "pyobjc-framework-Quartz; sys_platform == 'darwin'",
 ]

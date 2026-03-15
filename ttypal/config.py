@@ -80,6 +80,23 @@ def _read_soul_summary(name):
     return ''
 
 
+def _ask_key(cfg, cfg_key, env_key):
+    """Ask for an API key, show masked existing value."""
+    existing = cfg.get(cfg_key, '') or os.environ.get(env_key, '')
+    if existing:
+        masked = existing[:4] + '···' + existing[-4:]
+        print(f"  Current: {masked}")
+        val = input("  New key (enter to keep): ").strip()
+        if val:
+            cfg[cfg_key] = val
+    else:
+        val = input("  API key (enter to skip): ").strip()
+        if val:
+            cfg[cfg_key] = val
+        else:
+            print("  \033[2mSkipped.\033[0m")
+
+
 def needs_setup():
     """True if first run (no config file exists)."""
     return not os.path.exists(_CONFIG_PATH)
@@ -98,30 +115,68 @@ def run_setup(force=False):
     print("  \033[1m\033[38;2;255;100;160m╰─────────────────────────────╯\033[0m")
     print()
 
-    # ── Step 1: API key ──
-    print("  \033[1m[1/2] Gemini API Key\033[0m")
-    print("  \033[2mChat requires a Gemini API key (free).\033[0m")
-    print("  \033[2mGet one at: https://aistudio.google.com/apikey\033[0m")
+    # ── Step 1: Chat Provider ──
+    print("  \033[1m[1/3] Chat Provider\033[0m")
+    print()
+    _PROVIDERS = [
+        ('gemini',    'Gemini',             'free API key from Google'),
+        ('openai',    'OpenAI',             'GPT-4o, GPT-4o-mini, etc.'),
+        ('anthropic', 'Claude (Anthropic)', 'claude-sonnet, etc.'),
+        ('claude-cli','Claude CLI',         'uses local `claude` command — no API key'),
+        ('ollama',    'Ollama',             'local models, no API key'),
+    ]
+    current_provider = cfg.get('chat_provider', 'gemini')
+    for i, (key, label, desc) in enumerate(_PROVIDERS, 1):
+        marker = ' *' if key == current_provider else ''
+        print(f"  \033[1m[{i}]\033[0m {label}{marker}")
+        print(f"      \033[2m{desc}\033[0m")
+    print()
+    pchoice = input(f"  Select [default: {current_provider}]: ").strip()
+    if pchoice.isdigit() and 1 <= int(pchoice) <= len(_PROVIDERS):
+        cfg['chat_provider'] = _PROVIDERS[int(pchoice) - 1][0]
+    elif pchoice in [p[0] for p in _PROVIDERS]:
+        cfg['chat_provider'] = pchoice
+
     print()
 
-    existing_key = get_api_key(cfg)
-    if existing_key:
-        masked = existing_key[:4] + '···' + existing_key[-4:]
-        print(f"  Current: {masked}")
-        key_input = input("  New key (enter to keep): ").strip()
-        if key_input:
-            cfg['gemini_api_key'] = key_input
+    # ── Step 2: API Key ──
+    provider = cfg.get('chat_provider', 'gemini')
+    print(f"  \033[1m[2/3] API Key\033[0m")
+
+    if provider == 'gemini':
+        print("  \033[2mUsed for both chat and view generation.\033[0m")
+        print("  \033[2mGet one at: https://aistudio.google.com/apikey\033[0m")
+        print()
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
+    elif provider == 'openai':
+        _ask_key(cfg, 'openai_api_key', 'OPENAI_API_KEY')
+        print()
+        print("  \033[2mGemini key (optional, for view generation):\033[0m")
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
+    elif provider == 'anthropic':
+        _ask_key(cfg, 'anthropic_api_key', 'ANTHROPIC_API_KEY')
+        print()
+        print("  \033[2mGemini key (optional, for view generation):\033[0m")
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
+    elif provider == 'ollama':
+        model = input("  Ollama model [default: llama3.2]: ").strip()
+        if model:
+            cfg['chat_model'] = model
+        print()
+        print("  \033[2mGemini key (optional, for view generation):\033[0m")
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
+    elif provider == 'claude-cli':
+        print("  \033[2mNo API key needed — uses local `claude` command.\033[0m")
+        print()
+        print("  \033[2mGemini key (optional, for view generation):\033[0m")
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
     else:
-        key_input = input("  API key (enter to skip): ").strip()
-        if key_input:
-            cfg['gemini_api_key'] = key_input
-        else:
-            print("  \033[2mSkipped — chat will be disabled.\033[0m")
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
 
     print()
 
-    # ── Step 2: Character selection ──
-    print("  \033[1m[2/2] Choose Character\033[0m")
+    # ── Step 3: Character selection ──
+    print("  \033[1m[3/3] Choose Character\033[0m")
     print()
 
     presets = list_presets()
@@ -153,8 +208,8 @@ def run_setup(force=False):
     save_config(cfg)
     print()
     print(f"  \033[32m✓\033[0m Saved to {_CONFIG_PATH}")
+    print(f"  \033[2mProvider:  {cfg.get('chat_provider', 'gemini')}\033[0m")
     print(f"  \033[2mCharacter: {cfg.get('character', 'clawra')}\033[0m")
-    print(f"  \033[2mAPI key: {'set' if cfg.get('gemini_api_key') else 'not set'}\033[0m")
     print(f"  \033[2mRun 'ttypal --setup' to change later.\033[0m")
     print()
 

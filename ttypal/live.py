@@ -36,14 +36,8 @@ try:
 except ImportError:
     HAS_QUARTZ = False
 
-try:
-    from google import genai
-    from google.genai import types as _gtypes
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
-from .config import load_config, needs_setup, run_setup, get_api_key
+from .config import load_config, needs_setup, run_setup
+from .providers import create_provider
 from .memory import MemoryManager
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -367,7 +361,7 @@ class App:
         self.chat_speaking = False
         self.chat_streaming = False
         self.chat_history = []
-        self.gemini_client = None
+        self.provider = None
         self.memory = None
         self._history_path = None
 
@@ -743,14 +737,12 @@ class App:
     # ── Chat ─────────────────────────────────────────────
 
     def _init_chat(self, cfg):
-        api_key = get_api_key(cfg)
-        if HAS_GENAI and api_key:
-            self.gemini_client = genai.Client(api_key=api_key)
+        self.provider = create_provider(cfg)
 
         char_dir = self.character_dir or os.path.join(_DIR, 'characters', 'preset', 'clawra')
         self.memory = MemoryManager(
             char_dir,
-            gemini_client=self.gemini_client,
+            provider=self.provider,
             character_name=self.character_name or 'clawra',
         )
         self._history_path = self.memory.history_path
@@ -763,15 +755,19 @@ class App:
             with open(self._history_path) as f:
                 data = json.load(f)
             with self.chat_lock:
-                self.chat_history = [
-                    {"role": d["role"], "parts": [{"text": d["text"]}]}
-                    for d in data
-                ]
+                self.chat_history = []
+                for d in data:
+                    role = d.get("role", "user")
+                    if role == "model":
+                        role = "assistant"
+                    content = d.get("content") or d.get("text", "")
+                    self.chat_history.append({"role": role, "content": content})
                 if len(self.chat_history) > self.MAX_HISTORY:
                     self.chat_history = self.chat_history[-self.MAX_HISTORY:]
                 self.chat_lines = [
-                    ("you" if d["role"] == "user" else self.character_name, d["text"])
-                    for d in data
+                    ("you" if h["role"] == "user" else self.character_name,
+                     h["content"])
+                    for h in self.chat_history
                 ]
                 if len(self.chat_lines) > self.MAX_CHAT:
                     self.chat_lines = self.chat_lines[-self.MAX_CHAT:]
@@ -782,7 +778,7 @@ class App:
         try:
             with self.chat_lock:
                 data = [
-                    {"role": h["role"], "text": h["parts"][0]["text"]}
+                    {"role": h["role"], "content": h["content"]}
                     for h in self.chat_history
                 ]
             with open(self._history_path, 'w') as f:
@@ -790,51 +786,36 @@ class App:
         except Exception:
             pass
 
-    def _send_to_gemini(self, text):
-        """Send message to Gemini with streaming, update chat in real time."""
+    def _send_chat(self, text):
+        """Send message via provider with streaming, update chat in real time."""
         with self.chat_lock:
             self.chat_lines.append(('you', text))
             if len(self.chat_lines) > self.MAX_CHAT:
                 self.chat_lines.pop(0)
             self.chat_speaking = True
             self.chat_lines.append((self.character_name, '...'))
-            self.chat_history.append({"role": "user", "parts": [{"text": text}]})
+            self.chat_history.append({"role": "user", "content": text})
 
         response_text = ''
         try:
-            sys_instr = self.memory.build_system_prompt()
-            config = _gtypes.GenerateContentConfig(
-                system_instruction=sys_instr,
-                max_output_tokens=2048,
-            )
-            stream = self.gemini_client.models.generate_content_stream(
-                model='gemini-3-flash-preview',
-                contents=self.chat_history,
-                config=config,
-            )
-            for chunk in stream:
-                if chunk.text:
-                    if not self.chat_streaming:
-                        with self.chat_lock:
-                            self.chat_streaming = True
-                    for ch in chunk.text:
-                        response_text += ch
-                        with self.chat_lock:
-                            self.chat_lines[-1] = (self.character_name, response_text)
-                        time.sleep(0.03)
-                if hasattr(chunk, 'candidates') and chunk.candidates:
-                    fr = getattr(chunk.candidates[0], 'finish_reason', None)
-                    if fr and str(fr) not in ('STOP', 'FinishReason.STOP', 'None', '0'):
-                        response_text += f' [!{fr}]'
-                        with self.chat_lock:
-                            self.chat_lines[-1] = (self.character_name, response_text)
+            sys_prompt = self.memory.build_system_prompt()
+            for chunk in self.provider.stream_chat(
+                    self.chat_history, sys_prompt):
+                if not self.chat_streaming:
+                    with self.chat_lock:
+                        self.chat_streaming = True
+                for ch in chunk:
+                    response_text += ch
+                    with self.chat_lock:
+                        self.chat_lines[-1] = (self.character_name, response_text)
+                    time.sleep(0.03)
         except Exception as e:
             response_text += f' (error: {e})'
             with self.chat_lock:
                 self.chat_lines[-1] = (self.character_name, response_text)
 
         with self.chat_lock:
-            self.chat_history.append({"role": "model", "parts": [{"text": response_text}]})
+            self.chat_history.append({"role": "assistant", "content": response_text})
             if len(self.chat_history) > self.MAX_HISTORY:
                 dropped = self.chat_history[:-self.MAX_HISTORY]
                 self.chat_history[:] = self.chat_history[-self.MAX_HISTORY:]
@@ -845,7 +826,6 @@ class App:
                 ).start()
 
         self._save_history()
-        # Pass a copy to avoid race with background extraction
         self.memory.on_turn_complete(list(self.chat_history))
 
         with self.chat_lock:
@@ -897,7 +877,7 @@ class App:
         # Chat input
         input_buf = ''
         chat_mode = False
-        has_gemini = self.gemini_client is not None
+        has_chat = self.provider is not None
 
         color = (210, 210, 220)
 
@@ -921,9 +901,9 @@ class App:
                     if chat_mode and input_buf.strip() and not self.chat_speaking:
                         msg = input_buf.strip()
                         input_buf = ''
-                        if has_gemini:
+                        if has_chat:
                             threading.Thread(
-                                target=self._send_to_gemini, args=(msg,), daemon=True
+                                target=self._send_chat, args=(msg,), daemon=True
                             ).start()
                         else:
                             with self.chat_lock:
@@ -1093,8 +1073,9 @@ class App:
                     buf.append(mv(0, input_y) + prompt_str
                                + f"{_fg(120, 180, 235)}{cursor}{RST}" + ERASE_LINE)
                 else:
+                    chat_label = type(self.provider).__name__.replace('Provider', '').lower() if self.provider else ''
                     hint = ("enter:chat  q:quit"
-                            + ("  [gemini]" if has_gemini
+                            + (f"  [{chat_label}]" if has_chat
                                else f"  [{len(self.V)}v+{len(self.BV)}b]"))
                     buf.append(mv(0, input_y)
                                + f"{_fg(80, 80, 90)}{DIM}{hint}{RST}" + ERASE_LINE)
