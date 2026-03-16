@@ -833,11 +833,12 @@ class App:
             if len(self.chat_history) > self.MAX_HISTORY:
                 dropped = self.chat_history[:-self.MAX_HISTORY]
                 self.chat_history[:] = self.chat_history[-self.MAX_HISTORY:]
-                threading.Thread(
-                    target=self.memory.on_history_compact,
-                    args=(dropped,),
-                    daemon=True,
-                ).start()
+                if self.memory:
+                    threading.Thread(
+                        target=self.memory.on_history_compact,
+                        args=(dropped,),
+                        daemon=True,
+                    ).start()
 
         self._save_history()
         if self.memory:
@@ -1002,6 +1003,8 @@ class App:
                 mouth_t = phase * 2 if phase < 0.5 else (1.0 - phase) * 2
             else:
                 mouth_t *= 0.7
+                if mouth_t < 0.01:
+                    mouth_t = 0.0
 
             # Braille rendering (cached when unchanged)
             cache_key = (round(head_x, 2), round(head_y, 2),
