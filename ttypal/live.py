@@ -389,6 +389,7 @@ class App:
         provider_name = type(self.provider).__name__.replace('Provider', '') if self.provider else 'none'
         mem_mode = 'OpenClaw' if self._provider_manages_memory else 'built-in'
         print(f"  Chat: {provider_name} | Memory: {mem_mode} | Character: {self.character_name}")
+        time.sleep(1.5)
 
     def _load_config(self):
         if self.force_setup:
