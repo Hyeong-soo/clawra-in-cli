@@ -739,18 +739,28 @@ class App:
     def _init_chat(self, cfg):
         self.provider = create_provider(cfg)
 
-        # Initialize session for CLI-based providers
+        # Initialize session for providers that support it (CLI, OpenClaw)
         if self.provider and hasattr(self.provider, 'init_session'):
             self.provider.init_session(self.character_name or 'clawra')
 
+        # If provider manages memory (OpenClaw), skip ttypal's memory system
+        self._provider_manages_memory = getattr(
+            self.provider, 'manages_memory', False)
+
         char_dir = self.character_dir or os.path.join(_DIR, 'characters', 'preset', 'clawra')
-        self.memory = MemoryManager(
-            char_dir,
-            provider=self.provider,
-            character_name=self.character_name or 'clawra',
-        )
-        self._history_path = self.memory.history_path
-        self._load_history()
+        if not self._provider_manages_memory:
+            self.memory = MemoryManager(
+                char_dir,
+                provider=self.provider,
+                character_name=self.character_name or 'clawra',
+            )
+            self._history_path = self.memory.history_path
+            self._load_history()
+        else:
+            self.memory = None
+            self._history_path = os.path.join(char_dir, '.memory', 'history.json')
+            os.makedirs(os.path.dirname(self._history_path), exist_ok=True)
+            self._load_history()
 
     def _load_history(self):
         if not os.path.exists(self._history_path):
@@ -802,7 +812,7 @@ class App:
 
         response_text = ''
         try:
-            sys_prompt = self.memory.build_system_prompt()
+            sys_prompt = self.memory.build_system_prompt() if self.memory else ''
             for chunk in self.provider.stream_chat(
                     self.chat_history, sys_prompt):
                 if not self.chat_streaming:
@@ -830,7 +840,8 @@ class App:
                 ).start()
 
         self._save_history()
-        self.memory.on_turn_complete(list(self.chat_history))
+        if self.memory:
+            self.memory.on_turn_complete(list(self.chat_history))
 
         with self.chat_lock:
             self.chat_streaming = False
@@ -844,7 +855,7 @@ class App:
         try:
             self._loop()
         finally:
-            if self.memory and self.chat_history:
+            if self.memory and self.chat_history and not self._provider_manages_memory:
                 with self.chat_lock:
                     history_copy = list(self.chat_history)
                 self.memory.on_session_end(history_copy)

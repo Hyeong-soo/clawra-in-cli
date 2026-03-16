@@ -190,6 +190,73 @@ class AnthropicProvider(ChatProvider):
         return resp.content[0].text.strip()
 
 
+# ─── OpenClaw (OpenAI-compatible gateway) ────────────────
+
+
+class OpenClawProvider(ChatProvider):
+    """Chat via OpenClaw Gateway. Memory and personality managed by OpenClaw.
+
+    OpenClaw exposes /v1/chat/completions (OpenAI-compatible).
+    Session persistence via `user` field; agent via `x-openclaw-agent-id`.
+    System prompt is handled by OpenClaw's SOUL.md — not passed from ttypal.
+    """
+
+    # Flag for live.py to skip ttypal's built-in memory management
+    manages_memory = True
+
+    def __init__(self, base_url='http://localhost:18789/v1',
+                 token=None, agent_id='main', user_id=None):
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError(
+                "OpenClaw provider requires the openai package. "
+                "Install with: pip install ttypal[openai]"
+            )
+        self.client = OpenAI(
+            api_key=token or 'openclaw',
+            base_url=base_url,
+            default_headers={'x-openclaw-agent-id': agent_id},
+        )
+        self.user_id = user_id
+
+    def init_session(self, character_name):
+        """Set user_id for session persistence in OpenClaw."""
+        self.user_id = f'ttypal-{character_name}'
+
+    def stream_chat(self, messages, system_prompt, max_tokens=2048):
+        # Don't prepend system prompt — OpenClaw uses SOUL.md
+        msgs = [{"role": m["role"], "content": m["content"]} for m in messages]
+        kwargs = {
+            'model': 'openclaw',
+            'messages': msgs,
+            'max_tokens': max_tokens,
+            'stream': True,
+        }
+        if self.user_id:
+            kwargs['user'] = self.user_id
+
+        stream = self.client.chat.completions.create(**kwargs)
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+
+    def generate(self, prompt, max_tokens=4096, temperature=0.1, json_mode=False):
+        kwargs = {
+            'model': 'openclaw',
+            'messages': [{"role": "user", "content": prompt}],
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+        }
+        if self.user_id:
+            kwargs['user'] = self.user_id
+        if json_mode:
+            kwargs['response_format'] = {"type": "json_object"}
+        resp = self.client.chat.completions.create(**kwargs)
+        return resp.choices[0].message.content.strip()
+
+
 # ─── CLI (claude -p, etc.) ───────────────────────────────
 
 
@@ -346,5 +413,15 @@ def create_provider(cfg):
         command = cfg.get('cli_command', 'claude')
         model = cfg.get('chat_model')
         return CLIProvider(command=command, model=model)
+
+    elif provider_name == 'openclaw':
+        base_url = cfg.get('openclaw_url', 'http://localhost:18789/v1')
+        token = cfg.get('openclaw_token', '')
+        agent_id = cfg.get('openclaw_agent_id', 'main')
+        return OpenClawProvider(
+            base_url=base_url,
+            token=token or None,
+            agent_id=agent_id,
+        )
 
     return None

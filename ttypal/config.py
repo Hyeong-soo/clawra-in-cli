@@ -124,6 +124,7 @@ def run_setup(force=False):
         ('anthropic', 'Claude (Anthropic)', 'claude-sonnet, etc.'),
         ('claude-cli','Claude CLI',         'uses local `claude` command — no API key'),
         ('ollama',    'Ollama',             'local models, no API key'),
+        ('openclaw',  'OpenClaw',           'local OpenClaw agent — memory + LLM managed by OpenClaw'),
     ]
     current_provider = cfg.get('chat_provider', 'gemini')
     for i, (key, label, desc) in enumerate(_PROVIDERS, 1):
@@ -167,6 +168,20 @@ def run_setup(force=False):
         _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
     elif provider == 'claude-cli':
         print("  \033[2mNo API key needed — uses local `claude` command.\033[0m")
+        print()
+        print("  \033[2mGemini key (optional, for view generation):\033[0m")
+        _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
+    elif provider == 'openclaw':
+        print("  \033[2mOpenClaw Gateway connection:\033[0m")
+        url = input("  Gateway URL [http://localhost:18789/v1]: ").strip()
+        if url:
+            cfg['openclaw_url'] = url
+        token = input("  Auth token (enter to skip): ").strip()
+        if token:
+            cfg['openclaw_token'] = token
+        agent = input("  Agent ID [main]: ").strip()
+        if agent:
+            cfg['openclaw_agent_id'] = agent
         print()
         print("  \033[2mGemini key (optional, for view generation):\033[0m")
         _ask_key(cfg, 'gemini_api_key', 'GEMINI_API_KEY')
