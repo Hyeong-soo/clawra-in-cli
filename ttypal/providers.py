@@ -216,7 +216,10 @@ class OpenClawProvider(ChatProvider):
         self.client = OpenAI(
             api_key=token or 'openclaw',
             base_url=base_url,
-            default_headers={'x-openclaw-agent-id': agent_id},
+            default_headers={
+                'x-openclaw-agent-id': agent_id,
+                'x-openclaw-thinking': 'off',
+            },
         )
         self.user_id = user_id
 
