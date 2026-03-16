@@ -383,6 +383,12 @@ class App:
         self._load_views()
         self._init_flows()
         self._init_chat(cfg)
+        self._print_status()
+
+    def _print_status(self):
+        provider_name = type(self.provider).__name__.replace('Provider', '') if self.provider else 'none'
+        mem_mode = 'OpenClaw' if self._provider_manages_memory else 'built-in'
+        print(f"  Chat: {provider_name} | Memory: {mem_mode} | Character: {self.character_name}")
 
     def _load_config(self):
         if self.force_setup:
