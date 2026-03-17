@@ -963,6 +963,7 @@ class App:
         chat_mode = False
         has_chat = self.provider is not None
         scroll_offset = 0  # 0 = bottom (newest), >0 = scrolled up
+        prev_tw, prev_th = tw, th  # track terminal size for resize detection
 
         color = (210, 210, 220)
 
@@ -1047,6 +1048,13 @@ class App:
 
             tw, th = os.get_terminal_size()
             now = time.time()
+
+            # Detect resize → full clear to prevent artifacts
+            if tw != prev_tw or th != prev_th:
+                sys.stdout.write(CLR)
+                sys.stdout.flush()
+                self._braille_cache_key = None
+                prev_tw, prev_th = tw, th
 
             # Mouse tracking
             if HAS_QUARTZ and self.pane_x0 is not None:
@@ -1144,12 +1152,13 @@ class App:
             for y in range(max(0, oy - 1)):
                 buf.append(mv(0, y) + ERASE_LINE)
 
-            # Title
+            # Title (clear full line first to prevent resize artifacts)
             title_text = ' '.join(self.character_name.upper())
             title_len = len(title_text) + 4
             title = f"{_fg(255, 100, 160)}{BOLD}  {title_text}  {RST}"
             title_y = max(0, oy - 1)
-            buf.append(mv(max(0, (tw - title_len) // 2), title_y) + title + ERASE_LINE)
+            buf.append(mv(0, title_y) + ERASE_LINE
+                       + mv(max(0, (tw - title_len) // 2), title_y) + title)
 
             # Art
             fc = _fg(*color)
