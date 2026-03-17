@@ -896,10 +896,11 @@ class App:
                 if not self.chat_streaming:
                     with self.chat_lock:
                         self.chat_streaming = True
-                response_text += chunk
-                with self.chat_lock:
-                    self.chat_lines[-1] = (self.character_name, response_text, ts)
-                time.sleep(0.02)  # pace streaming for mouth animation
+                for ch in chunk:
+                    response_text += ch
+                    with self.chat_lock:
+                        self.chat_lines[-1] = (self.character_name, response_text, ts)
+                    time.sleep(0.02)
         except Exception as e:
             response_text += f' (error: {e})'
             with self.chat_lock:
@@ -1125,8 +1126,8 @@ class App:
                     blink_start = 0.0
                     next_blink = now + random.uniform(2.0, 5.0)
 
-            # Mouth animation (triangle wave while streaming only)
-            if self.chat_streaming and self.mouth is not None:
+            # Mouth animation (triangle wave while speaking)
+            if self.chat_speaking and self.mouth is not None:
                 phase = (now % mouth_cycle) / mouth_cycle
                 mouth_t = phase * 2 if phase < 0.5 else (1.0 - phase) * 2
             else:
