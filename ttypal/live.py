@@ -1126,8 +1126,8 @@ class App:
                     blink_start = 0.0
                     next_blink = now + random.uniform(2.0, 5.0)
 
-            # Mouth animation (triangle wave while speaking)
-            if self.chat_speaking and self.mouth is not None:
+            # Mouth animation (triangle wave while text is arriving)
+            if self.chat_streaming and self.mouth is not None:
                 phase = (now % mouth_cycle) / mouth_cycle
                 mouth_t = phase * 2 if phase < 0.5 else (1.0 - phase) * 2
             else:
