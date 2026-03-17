@@ -899,6 +899,7 @@ class App:
                 response_text += chunk
                 with self.chat_lock:
                     self.chat_lines[-1] = (self.character_name, response_text, ts)
+                time.sleep(0.02)  # pace streaming for mouth animation
         except Exception as e:
             response_text += f' (error: {e})'
             with self.chat_lock:
