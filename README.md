@@ -64,10 +64,10 @@ The character smoothly follows your cursor everywhere.
 Natural blink timing with triangle-wave eyelid animation.
 Mouth opens while the character talks.
 
-**Gemini Chat**
-Press Enter to talk. Streaming responses with
-character-by-character typing effect. Each character
-has a unique personality defined in `soul.md`.
+**Multi-Provider Chat**
+Press Enter to talk. Gemini, OpenAI, Claude, Ollama,
+or OpenClaw — pick your LLM. Streaming responses with
+markdown rendering. Personality from `soul.md`.
 
 </td>
 <td width="50%">
@@ -102,7 +102,9 @@ pip install ttypal[all]
 
 ```bash
 pip install ttypal              # Core only (rendering, no chat)
-pip install ttypal[chat]        # + Gemini chat
+pip install ttypal[gemini]      # + Gemini chat
+pip install ttypal[openai]      # + OpenAI / Ollama / OpenClaw chat
+pip install ttypal[anthropic]   # + Claude chat
 pip install ttypal[setup]       # + View generation UI (Flask + Gemini)
 pip install ttypal[macos]       # + Global mouse tracking (Quartz)
 ```
@@ -144,7 +146,18 @@ ttypal-generate ref.png         # CLI batch view generation
 ttypal-art                      # Terminal art showcase
 ```
 
-**Controls:**  `Enter` chat  |  `ESC` exit chat  |  `q` quit
+**Controls:**
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Enter chat mode |
+| `ESC` | Exit chat mode |
+| `q` | Quit (outside chat) |
+| `←` `→` | Move cursor in input |
+| `↑` `↓` | Scroll chat history |
+| `PgUp` `PgDn` | Scroll 5 lines |
+| `Ctrl+U` | Clear input line |
+| `Ctrl+W` | Delete last word |
 
 ## Preset Characters
 
