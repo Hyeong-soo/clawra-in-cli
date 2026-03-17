@@ -93,19 +93,28 @@ def _vis_trunc(s, width):
 
 
 def _wrap(s, width):
-    """Wrap string into lines of at most `width` visible columns."""
+    """Wrap string into lines of at most `width` visible columns.
+    Preserves ANSI state (bold, color) across line breaks."""
     result = []
     for paragraph in s.split('\n'):
         cur = ''; vis = 0; i = 0
+        active_ansi = ''  # track current ANSI state for carry-over
         while i < len(paragraph):
             m = _ANSI_RE.match(paragraph, i)
             if m:
-                cur += m.group(); i = m.end()
+                code = m.group()
+                cur += code
+                if code == RST:
+                    active_ansi = ''
+                else:
+                    active_ansi += code
+                i = m.end()
             else:
                 cw = _cw(paragraph[i])
                 if vis + cw > width:
                     result.append(cur + RST)
-                    cur = ''; vis = 0
+                    cur = active_ansi  # re-apply active codes on new line
+                    vis = 0
                 cur += paragraph[i]; vis += cw; i += 1
         result.append(cur + RST)
     return result or ['']
