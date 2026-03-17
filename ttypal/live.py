@@ -270,6 +270,31 @@ def _teardown_terminal(old):
     sys.stdout.flush()
 
 
+_SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+
+def _render_md(text, color_code):
+    """Basic markdown: **bold**, `code`, preserve newlines."""
+    result = ''
+    i = 0
+    while i < len(text):
+        if text[i:i+2] == '**':
+            end = text.find('**', i + 2)
+            if end != -1:
+                result += BOLD + text[i+2:end] + RST + color_code
+                i = end + 2
+                continue
+        if text[i] == '`' and text[i:i+3] != '```':
+            end = text.find('`', i + 1)
+            if end != -1:
+                result += f'{_fg(180, 200, 160)}{text[i+1:end]}{RST}{color_code}'
+                i = end + 1
+                continue
+        result += text[i]
+        i += 1
+    return result
+
+
 def _poll(timeout=0.03):
     import select
     events = []
@@ -284,6 +309,7 @@ def _poll(timeout=0.03):
         while i < len(data):
             if data[i] == '\x1b' and i + 1 < len(data) and data[i + 1] == '[':
                 if i + 2 < len(data) and data[i + 2] == '<':
+                    # SGR mouse event
                     j = i + 3
                     while j < len(data) and data[j] not in ('M', 'm'):
                         j += 1
@@ -296,10 +322,40 @@ def _poll(timeout=0.03):
                                 pass
                         i = j + 1
                         continue
+                # CSI sequences: arrows, page up/down, home/end
                 j = i + 2
+                seq = ''
                 while j < len(data) and not data[j].isalpha() and data[j] != '~':
+                    seq += data[j]
                     j += 1
+                if j < len(data):
+                    ch = data[j]
+                    if ch == 'A':
+                        events.append(('arrow_up',))
+                    elif ch == 'B':
+                        events.append(('arrow_down',))
+                    elif ch == 'C':
+                        events.append(('arrow_right',))
+                    elif ch == 'D':
+                        events.append(('arrow_left',))
+                    elif ch == 'H':
+                        events.append(('home',))
+                    elif ch == 'F':
+                        events.append(('end',))
+                    elif ch == '~':
+                        if seq == '5':
+                            events.append(('page_up',))
+                        elif seq == '6':
+                            events.append(('page_down',))
                 i = j + 1
+            elif data[i] == '\x01':  # Ctrl+A
+                events.append(('home',)); i += 1
+            elif data[i] == '\x05':  # Ctrl+E
+                events.append(('end',)); i += 1
+            elif data[i] == '\x15':  # Ctrl+U
+                events.append(('clear_line',)); i += 1
+            elif data[i] == '\x17':  # Ctrl+W
+                events.append(('delete_word',)); i += 1
             elif data[i] == '\x03':
                 events.append(('quit',)); i += 1
             elif data[i] == '\x1b':
@@ -787,7 +843,7 @@ class App:
                     self.chat_history = self.chat_history[-self.MAX_HISTORY:]
                 self.chat_lines = [
                     ("you" if h["role"] == "user" else self.character_name,
-                     h["content"])
+                     h["content"], '')
                     for h in self.chat_history
                 ]
                 if len(self.chat_lines) > self.MAX_CHAT:
@@ -807,14 +863,20 @@ class App:
         except Exception:
             pass
 
+    @staticmethod
+    def _timestamp():
+        from datetime import datetime
+        return datetime.now().strftime('%H:%M')
+
     def _send_chat(self, text):
         """Send message via provider with streaming, update chat in real time."""
+        ts = self._timestamp()
         with self.chat_lock:
-            self.chat_lines.append(('you', text))
+            self.chat_lines.append(('you', text, ts))
             if len(self.chat_lines) > self.MAX_CHAT:
                 self.chat_lines.pop(0)
             self.chat_speaking = True
-            self.chat_lines.append((self.character_name, '...'))
+            self.chat_lines.append((self.character_name, '', ts))
             self.chat_history.append({"role": "user", "content": text})
 
         response_text = ''
@@ -825,15 +887,13 @@ class App:
                 if not self.chat_streaming:
                     with self.chat_lock:
                         self.chat_streaming = True
-                for ch in chunk:
-                    response_text += ch
-                    with self.chat_lock:
-                        self.chat_lines[-1] = (self.character_name, response_text)
-                    time.sleep(0.03)
+                response_text += chunk
+                with self.chat_lock:
+                    self.chat_lines[-1] = (self.character_name, response_text, ts)
         except Exception as e:
             response_text += f' (error: {e})'
             with self.chat_lock:
-                self.chat_lines[-1] = (self.character_name, response_text)
+                self.chat_lines[-1] = (self.character_name, response_text, ts)
 
         with self.chat_lock:
             self.chat_history.append({"role": "assistant", "content": response_text})
@@ -899,8 +959,10 @@ class App:
 
         # Chat input
         input_buf = ''
+        cursor_pos = 0
         chat_mode = False
         has_chat = self.provider is not None
+        scroll_offset = 0  # 0 = bottom (newest), >0 = scrolled up
 
         color = (210, 210, 220)
 
@@ -912,6 +974,7 @@ class App:
                     if chat_mode:
                         chat_mode = False
                         input_buf = ''
+                        cursor_pos = 0
                     else:
                         return
                 elif ev[0] == 'key' and ev[1] in 'qQ' and not chat_mode:
@@ -924,23 +987,63 @@ class App:
                     if chat_mode and input_buf.strip() and not self.chat_speaking:
                         msg = input_buf.strip()
                         input_buf = ''
+                        cursor_pos = 0
+                        scroll_offset = 0
                         if has_chat:
                             threading.Thread(
                                 target=self._send_chat, args=(msg,), daemon=True
                             ).start()
                         else:
                             with self.chat_lock:
-                                self.chat_lines.append(('you', msg))
+                                self.chat_lines.append(('you', msg, self._timestamp()))
                                 self.chat_lines.append(
-                                    (self.character_name, '(gemini not configured)'))
+                                    (self.character_name, '(chat not configured)', self._timestamp()))
                     elif not chat_mode and not self.no_chat:
                         chat_mode = True
                 elif ev[0] == 'backspace':
-                    if chat_mode and input_buf:
-                        input_buf = input_buf[:-1]
+                    if chat_mode and input_buf and cursor_pos > 0:
+                        input_buf = input_buf[:cursor_pos-1] + input_buf[cursor_pos:]
+                        cursor_pos -= 1
+                elif ev[0] == 'arrow_left':
+                    if chat_mode and cursor_pos > 0:
+                        cursor_pos -= 1
+                elif ev[0] == 'arrow_right':
+                    if chat_mode and cursor_pos < len(input_buf):
+                        cursor_pos += 1
+                elif ev[0] == 'home':
+                    if chat_mode:
+                        cursor_pos = 0
+                elif ev[0] == 'end':
+                    if chat_mode:
+                        cursor_pos = len(input_buf)
+                elif ev[0] == 'clear_line':
+                    if chat_mode:
+                        input_buf = ''
+                        cursor_pos = 0
+                elif ev[0] == 'delete_word':
+                    if chat_mode and cursor_pos > 0:
+                        j = cursor_pos - 1
+                        while j > 0 and input_buf[j-1] == ' ':
+                            j -= 1
+                        while j > 0 and input_buf[j-1] != ' ':
+                            j -= 1
+                        input_buf = input_buf[:j] + input_buf[cursor_pos:]
+                        cursor_pos = j
+                elif ev[0] == 'arrow_up':
+                    if chat_mode and not input_buf:
+                        scroll_offset += 1
+                elif ev[0] == 'arrow_down':
+                    if chat_mode and not input_buf and scroll_offset > 0:
+                        scroll_offset -= 1
+                elif ev[0] == 'page_up':
+                    scroll_offset += 5
+                elif ev[0] == 'page_down':
+                    scroll_offset = max(0, scroll_offset - 5)
                 elif ev[0] == 'key':
                     if chat_mode:
-                        input_buf += ev[1]
+                        input_buf = input_buf[:cursor_pos] + ev[1] + input_buf[cursor_pos:]
+                        cursor_pos += 1
+                        scroll_offset = 0  # snap to bottom on new input
 
             tw, th = os.get_terminal_size()
             now = time.time()
@@ -1063,24 +1166,71 @@ class App:
                 for y in range(art_end, chat_y):
                     buf.append(mv(0, y) + ERASE_LINE)
 
-                # Chat separator
-                buf.append(mv(0, chat_y) + f"{_fg(80, 80, 90)}{'─' * tw}{RST}")
+                # Chat separator with provider label
+                chat_label = (type(self.provider).__name__.replace('Provider', '').lower()
+                              if self.provider else '')
+                sep_left = f"─── Chat "
+                sep_right = f" [{chat_label}] ───" if chat_label else " ───"
+                sep_fill = '─' * max(0, tw - len(sep_left) - len(sep_right))
+                buf.append(mv(0, chat_y)
+                           + f"{_fg(80, 80, 90)}{sep_left}{sep_fill}{sep_right}{RST}")
 
-                # Chat messages
+                # Chat messages with improved formatting
                 with self.chat_lock:
                     snapshot = list(self.chat_lines)
-                cw = tw - 2
+                cw = tw - 4  # margins
                 disp = []
-                for speaker, text in snapshot:
-                    if speaker != 'you':
-                        prefix = (f"{_fg(255, 100, 160)}{BOLD}"
-                                  f"{self.character_name.capitalize()}:{RST} ")
+
+                for idx, (speaker, text, *rest) in enumerate(snapshot):
+                    ts = rest[0] if rest else ''
+                    is_char = speaker != 'you'
+
+                    # Speaker header with timestamp
+                    if is_char:
+                        name_str = (f" {_fg(255, 100, 160)}{BOLD}"
+                                    f"{self.character_name.capitalize()}{RST}")
+                        clr = _fg(255, 100, 160)
                     else:
-                        prefix = f"{_fg(120, 180, 235)}You:{RST} "
-                    wrapped = _wrap(prefix + text, cw)
-                    disp.extend(wrapped)
+                        name_str = f" {_fg(120, 180, 235)}{BOLD}You{RST}"
+                        clr = _fg(120, 180, 235)
+
+                    if ts:
+                        pad = max(0, cw - len(speaker) - len(ts) - 2)
+                        header = f"{clr}┌{RST}{name_str}{' ' * pad}{_fg(60, 60, 70)}{ts}{RST}"
+                    else:
+                        header = f"{clr}┌{RST}{name_str}"
+                    disp.append(header)
+
+                    # Message body with markdown
+                    body_color = clr
+                    rendered = _render_md(text, body_color)
+                    body_lines = _wrap(f"{body_color}{rendered}{RST}", cw)
+                    for bl in body_lines:
+                        disp.append(f" {_fg(50, 50, 60)}│{RST} {bl}")
+
+                    # Spacing between messages
+                    if idx < len(snapshot) - 1:
+                        disp.append('')
+
+                # Typing indicator
+                if self.chat_speaking and not self.chat_streaming:
+                    spin_ch = _SPINNER[int(now * 8) % len(_SPINNER)]
+                    disp.append(
+                        f" {_fg(255, 100, 160)}┌{RST} "
+                        f"{_fg(255, 100, 160)}{BOLD}{self.character_name.capitalize()}{RST} "
+                        f"{_fg(100, 100, 110)}is thinking {spin_ch}{RST}")
+
+                # Scroll handling
                 max_lines = chat_rows - 2
-                vis_lines = disp[-max_lines:]
+                total = len(disp)
+                scroll_offset = min(scroll_offset, max(0, total - max_lines))
+                if scroll_offset > 0:
+                    end_idx = total - scroll_offset
+                    start_idx = max(0, end_idx - max_lines)
+                    vis_lines = disp[start_idx:end_idx]
+                else:
+                    vis_lines = disp[-max_lines:] if total > max_lines else disp
+
                 for ci in range(max_lines):
                     y = chat_y + 1 + ci
                     if y >= th - 1:
@@ -1090,15 +1240,23 @@ class App:
                     else:
                         buf.append(mv(0, y) + ERASE_LINE)
 
-                # Input line
+                # Scroll indicator
+                if scroll_offset > 0:
+                    scroll_hint = f" {_fg(80, 80, 90)}[↑{scroll_offset}]{RST}"
+                    buf.append(mv(tw - 6, chat_y) + scroll_hint)
+
+                # Input line with cursor positioning
                 input_y = th - 1
                 if chat_mode:
-                    prompt_str = f"{_fg(120, 180, 235)}> {RST}{input_buf}"
-                    cursor = "█" if int(now * 3) % 2 == 0 else " "
-                    buf.append(mv(0, input_y) + prompt_str
-                               + f"{_fg(120, 180, 235)}{cursor}{RST}" + ERASE_LINE)
+                    before = input_buf[:cursor_pos]
+                    after = input_buf[cursor_pos:]
+                    cursor_ch = "█" if int(now * 3) % 2 == 0 else "▏"
+                    prompt_str = (f"{_fg(120, 180, 235)}> {RST}"
+                                  f"{before}"
+                                  f"{_fg(120, 180, 235)}{cursor_ch}{RST}"
+                                  f"{after}")
+                    buf.append(mv(0, input_y) + prompt_str + ERASE_LINE)
                 else:
-                    chat_label = type(self.provider).__name__.replace('Provider', '').lower() if self.provider else ''
                     hint = ("enter:chat  q:quit"
                             + (f"  [{chat_label}]" if has_chat
                                else f"  [{len(self.V)}v+{len(self.BV)}b]"))
