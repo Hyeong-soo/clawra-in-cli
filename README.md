@@ -4,10 +4,10 @@
 
 **Your terminal companion that sees you.**
 
+[![PyPI](https://img.shields.io/pypi/v/ttypal?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/ttypal/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-000000?logo=apple&logoColor=white)](https://github.com)
-[![Powered by Gemini](https://img.shields.io/badge/chat-Gemini-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/apikey)
 
 An anime character lives in your terminal — rendered as braille art, following your mouse,
 blinking naturally, chatting with personality, and remembering you across sessions.
@@ -94,27 +94,31 @@ Views compressed to ~6MB npz. Auto-fits any terminal size.
 ## Install
 
 ```bash
-pip install ttypal[all]
+pip install ttypal
 ```
+
+On first run, a setup wizard guides you through provider selection, API key, and character download (~20MB each from GitHub Releases).
 
 <details>
-<summary>Minimal installs</summary>
+<summary>Chat provider extras</summary>
 
 ```bash
-pip install ttypal              # Core only (rendering, no chat)
-pip install ttypal[gemini]      # + Gemini chat
-pip install ttypal[openai]      # + OpenAI / Ollama / OpenClaw chat
-pip install ttypal[anthropic]   # + Claude chat
-pip install ttypal[setup]       # + View generation UI (Flask + Gemini)
-pip install ttypal[macos]       # + Global mouse tracking (Quartz)
+pip install ttypal[gemini]      # Gemini chat (default)
+pip install ttypal[openai]      # OpenAI / Ollama / OpenClaw
+pip install ttypal[anthropic]   # Claude
+pip install ttypal[all]         # Everything
 ```
+
+No extra install needed for **Claude CLI** (`claude -p`) or **OpenClaw** providers.
 
 </details>
 
 <details>
-<summary>Development (uv)</summary>
+<summary>Development</summary>
 
 ```bash
+git clone https://github.com/Hyeong-soo/clawra-in-cli.git
+cd clawra-in-cli
 uv sync --all-extras
 uv run ttypal
 ```
@@ -124,11 +128,16 @@ uv run ttypal
 ## Quick Start
 
 ```bash
+pip install ttypal
 ttypal
 ```
 
-A setup wizard guides you through API key and character selection on first run.
-Config is saved to `~/.ttypal/config.json`.
+The setup wizard will:
+1. **Choose a chat provider** — Gemini, OpenAI, Claude, Ollama, or OpenClaw
+2. **Set API key** (or skip for Claude CLI / OpenClaw)
+3. **Pick a character** — preset views download automatically (~20MB)
+
+Config is saved to `~/.ttypal/config.json`. Run `ttypal --setup` to change later.
 
 ## Usage
 
