@@ -21,6 +21,15 @@ _CONFIG_PATH = os.path.join(_CONFIG_DIR, 'config.json')
 _PRESET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            'characters', 'preset')
 
+_RELEASE_BASE = 'https://github.com/Hyeong-soo/clawra-in-cli/releases/download'
+
+# Preset character metadata: name → (description, views_size_mb)
+_PRESET_META = {
+    'clawra': ('K-pop dreamer turned SF startup intern', 20),
+    'aska':   ('Fierce EVA pilot from Berlin', 20),
+    'reze':   ('Bomb Girl from Chainsaw Man', 22),
+}
+
 
 def load_config():
     """Load config from ~/.ttypal/config.json. Returns dict."""
@@ -95,6 +104,52 @@ def _ask_key(cfg, cfg_key, env_key):
             cfg[cfg_key] = val
         else:
             print("  \033[2mSkipped.\033[0m")
+
+
+def _download_views(name, version=None):
+    """Download preset character views.npz from GitHub Releases."""
+    if version is None:
+        from . import __version__
+        version = f'v{__version__}'
+
+    views_dir = os.path.join(_PRESET_DIR, name, 'views')
+    npz_path = os.path.join(views_dir, 'views.npz')
+
+    if os.path.exists(npz_path):
+        return True
+
+    url = f'{_RELEASE_BASE}/{version}/{name}-views.npz'
+    print(f"  \033[2mDownloading {name} views from GitHub...\033[0m")
+    print(f"  \033[2m{url}\033[0m")
+
+    try:
+        import urllib.request
+        os.makedirs(views_dir, exist_ok=True)
+        tmp_path = npz_path + '.tmp'
+
+        def _progress(block, block_size, total):
+            downloaded = block * block_size
+            if total > 0:
+                pct = min(100, downloaded * 100 // total)
+                bar = '█' * (pct // 5) + '░' * (20 - pct // 5)
+                print(f"\r  {bar} {pct}%", end='', flush=True)
+
+        urllib.request.urlretrieve(url, tmp_path, reporthook=_progress)
+        print()
+        os.replace(tmp_path, npz_path)
+        size_mb = os.path.getsize(npz_path) / (1024 * 1024)
+        print(f"  \033[32m✓\033[0m Downloaded {name} ({size_mb:.0f}MB)")
+        return True
+    except Exception as e:
+        print(f"\n  \033[31m✗ Download failed: {e}\033[0m")
+        if os.path.exists(npz_path + '.tmp'):
+            os.remove(npz_path + '.tmp')
+        return False
+
+
+def _has_views(name):
+    """Check if a preset character has views.npz downloaded."""
+    return os.path.exists(os.path.join(_PRESET_DIR, name, 'views', 'views.npz'))
 
 
 def needs_setup():
@@ -196,8 +251,11 @@ def run_setup(force=False):
 
     presets = list_presets()
     for i, name in enumerate(presets, 1):
-        summary = _read_soul_summary(name)
-        print(f"  \033[1m[{i}]\033[0m {name}")
+        meta = _PRESET_META.get(name, ('', 0))
+        has = _has_views(name)
+        status = '\033[32m✓\033[0m' if has else f'\033[33m↓ {meta[1]}MB\033[0m'
+        summary = meta[0] or _read_soul_summary(name)
+        print(f"  \033[1m[{i}]\033[0m {name}  {status}")
         if summary:
             print(f"      \033[2m{summary}\033[0m")
 
@@ -209,14 +267,24 @@ def run_setup(force=False):
     current = cfg.get('character', 'clawra')
     choice = input(f"  Select [default: {current}]: ").strip()
 
+    selected = None
     if choice.isdigit():
         idx = int(choice)
         if 1 <= idx <= len(presets):
-            cfg['character'] = presets[idx - 1]
+            selected = presets[idx - 1]
         elif idx == custom_idx:
             _setup_custom(cfg)
     elif choice and choice in presets:
-        cfg['character'] = choice
+        selected = choice
+
+    if selected:
+        cfg['character'] = selected
+        # Download views if not present
+        if not _has_views(selected) and selected in _PRESET_META:
+            print()
+            dl = input(f"  Download {selected} views? (Y/n): ").strip().lower()
+            if dl != 'n':
+                _download_views(selected)
     # else: keep current
 
     # ── Save ──

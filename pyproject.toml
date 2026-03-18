@@ -38,3 +38,10 @@ ttypal-generate = "ttypal.generate_multiview:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ttypal"]
+
+[tool.hatch.build]
+exclude = [
+    "ttypal/characters/preset/*/views/views.npz",
+    "ttypal/characters/preset/*/refs/*",
+    "ttypal/characters/custom/",
+]
